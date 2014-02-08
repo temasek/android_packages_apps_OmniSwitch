@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Copyright (C) 2013 The OmniROM Project
+
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 2 of the License, or
+  (at your option) any later version.
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+-->
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+	<string name="app_name">OmniSwitch</string>
+	<string name="status_bar_recent_remove_item_title">Остановить</string>
+	<string name="status_bar_recent_inspect_item_title">О приложении</string>
+	<string name="recents_settings_title">OmniSwitch</string>
+	<string name="start_on_boot_title">Запуск при загрузке</string>
+	<string name="start_on_boot_summary">Запуск и включение при загрузке усиройства</string>
+	<string name="toggle_service_title">Включить</string>
+	<string name="opacity_title">Непрозрачность</string>
+	<string name="opacity_summary">Вид непрозрачности наложения фона</string>
+	<string name="animate_title">Анимация</string>
+	<string name="animate_title_summary">Использовать анимацию при открытии и закрытии панели</string>
+	<string name="adjust_handle_title">Расположение</string>
+	<string name="sc_drag_handle_title">Ручная настройка</string>
+	<string name="sc_drag_handle_body">\nГоризонтальный свайп или долгое нажатие, чтобы открыть\nНажатие на кнопку или рядом, чтобы закрыть</string>
+	<string name="sc_favorite_title">Избранные приложения</string>
+	<string name="sc_favorite_body">\nОткрыть список избранных приложений.</string>
+	<string name="icon_size_normal">Обычная</string>
+	<string name="icon_size_small">Маленькая</string>
+	<string name="icon_size_large">Большая</string>
+	<string name="icon_size_title">Размер иконки</string>
+	<string name="ok">OK</string>
+	<string name="cancel">Отмена</string>
+	<string name="drag_handle_color_title">Цвет</string>
+	<string name="drag_handle_color_dialog_title">Цвет</string>
+	<string name="service_background_processes"><xliff:g id="memory">%1$s</xliff:g> свободно</string>
+	<string name="service_foreground_processes"><xliff:g id="memory">%1$s</xliff:g> занято</string>
+	<string name="show_rambar_title">Использование памяти</string>
+	<string name="show_rambar_summary">Отображение объема свободной и используемой памяти</string>
+	<string name="show_app_labels">Название приложения</string>
+	<string name="show_app_labels_summary">Вместе с иконкой будет отображаться название приложения</string>
+	<string name="category_overlay_title">Внешний вид</string>
+	<string name="category_drag_handle_title">Ручная настройка</string>
+	<string name="category_favorite_title">Избранное</string>
+	<string name="favorite_apps_config_title">Управление избранным</string>
+	<string name="favorite_apps_config_summary">Определите приложения, которые будут отображаться в избранном</string>
+	<string name="favorite_apps_add_dialog_title">Добавить приложения</string>
+	<string name="favorite_add">Добавить\u2026</string>
+	<string name="location_left">&lt;&lt;</string>
+	<string name="location_right">&gt;&gt;</string>
+	<string name="reset">По умолчанию</string>
+	<string name="toogle_last_app_help">Перейти к последнему приложению</string>
+	<string name="kill_all_apps_help">Закрыть все приложения</string>
+	<string name="kill_other_apps_help">Закрыть другие приложения</string>
+	<string name="settings_help">Настройки</string>
+	<string name="home_help">\"Домой\"</string>
+	<string name="toogle_last_app">Перейти к последнему приложению</string>
+	<string name="kill_all_apps">Закрыть все приложения</string>
+	<string name="kill_other_apps">Закрыть другие приложения</string>
+	<string name="settings">Настройки</string>
+	<string name="home">\"Домой\"</string>
+	<string name="buttons_title">Кнопки</string>
+	<string name="buttons_summary">Кнопки действий отображаемые на экране</string>
+	<string name="auto_hide_handle">Автоскрытие</string>
+	<string name="auto_hide_handle_summary">Два нажатия для отображения панели</string>
+	<string name="no_recent_apps_title">Нет последних приложений</string>
+	<string name="adjust_handle_disable_summary">Изменение положения отключено</string>
+	<string name="adjust_handle_enable_summary"></string>
+</resources>

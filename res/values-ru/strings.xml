@@ -22,12 +22,11 @@
 	<string name="recents_settings_title">OmniSwitch</string>
 	<string name="start_on_boot_title">Запуск при загрузке</string>
 	<string name="start_on_boot_summary">Запуск и включение при загрузке усиройства</string>
-	<string name="toggle_service_title">Включить</string>
 	<string name="opacity_title">Непрозрачность</string>
 	<string name="opacity_summary">Вид непрозрачности наложения фона</string>
 	<string name="animate_title">Анимация</string>
 	<string name="animate_title_summary">Использовать анимацию при открытии и закрытии панели</string>
-	<string name="adjust_handle_title">Расположение</string>
+	<string name="adjust_handle_title">Расположение и размер</string>
 	<string name="sc_drag_handle_title">Ручная настройка</string>
 	<string name="sc_drag_handle_body">\nГоризонтальный свайп или долгое нажатие, чтобы открыть\nНажатие на кнопку или рядом, чтобы закрыть</string>
 	<string name="sc_favorite_title">Избранные приложения</string>
@@ -39,7 +38,6 @@
 	<string name="ok">OK</string>
 	<string name="cancel">Отмена</string>
 	<string name="drag_handle_color_title">Цвет</string>
-    <string name="drag_handle_color_summary"></string>
     <string name="drag_handle_color_dialog_title">Цвет</string>
     <string name="service_background_processes"><xliff:g id="memory">%1$s</xliff:g> свободно</string>
     <string name="service_foreground_processes"><xliff:g id="memory">%1$s</xliff:g> занято</string>
@@ -70,9 +68,7 @@
     <string name="auto_hide_handle">Автоскрытие</string>
     <string name="auto_hide_handle_summary">Два нажатия для отображения панели</string>
     <string name="no_recent_apps_title">Нет последних приложений</string>
-    <string name="adjust_handle_summary"></string>
     <string name="drag_handle_opacity_title">Непрозрачность</string>
-    <string name="drag_handle_opacity_summary"></string>
     <string name="drag_handle_enable_title">Включить</string>
     <string name="drag_handle_enable_summary">Отключить, только если вы используете другой способ активации</string>
 </resources>

@@ -19,15 +19,12 @@ package org.omnirom.omniswitch;
 
 import java.util.Map;
 
-import org.omnirom.omniswitch.ui.ColorDrawableWithDimensions;
+import org.omnirom.omniswitch.ui.BitmapCache;
 
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.graphics.Color;
 import android.graphics.Point;
-import android.graphics.drawable.Drawable;
 import android.preference.PreferenceManager;
-import android.util.DisplayMetrics;
 import android.view.WindowManager;
 
 public class SwitchConfiguration {
@@ -53,6 +50,7 @@ public class SwitchConfiguration {
     public int mDragHandleColor;
     public float mDragHandleOpacity;
     public int mGlowColor;
+    public int mFlatGlowColor;
     public int mDefaultColor;
     public int mIconDpi;
     public boolean mAutoHide;
@@ -62,7 +60,6 @@ public class SwitchConfiguration {
     public boolean mRestrictedMode;
     public int mLevelHeight; // in px
     public int mItemChangeWidthX; // in px - maximum value - can be lower if more items
-    public Drawable mDefaultThumbnailBackground;
     public int mThumbnailWidth; // in px
     public int mThumbnailHeight; // in px
     public Map<Integer, Boolean> mButtons;
@@ -71,6 +68,7 @@ public class SwitchConfiguration {
     public boolean mLimitLevelChangeX = true;
     public Map<Integer, Boolean> mSpeedSwitchButtons;
     public int mLimitItemsX = 10;
+    public boolean mFlatStyle;
 
     public static SwitchConfiguration mInstance;
     private WindowManager mWindowManager;
@@ -95,6 +93,7 @@ public class SwitchConfiguration {
         mDefaultColor = context.getResources()
                 .getColor(R.color.holo_blue_light);
         mGlowColor = context.getResources().getColor(R.color.glow_color);
+        mFlatGlowColor = context.getResources().getColor(R.color.flat_glow_color);
         mDefaultHandleHeight = Math.round(100 * mDensity);
         mHorizontalMargin = Math.round(5 * mDensity);
         mRestrictedMode = !hasSystemPermission(context);
@@ -110,9 +109,6 @@ public class SwitchConfiguration {
                 R.dimen.thumbnail_width);
         mThumbnailHeight = (int) context.getResources()
                 .getDimensionPixelSize(R.dimen.thumbnail_height);
-        mDefaultThumbnailBackground = new ColorDrawableWithDimensions(
-                Color.BLACK, mThumbnailWidth, mThumbnailHeight);
-
         updatePrefs(PreferenceManager.getDefaultSharedPreferences(context), "");
     }
 
@@ -138,8 +134,7 @@ public class SwitchConfiguration {
 
         mMaxWidth = Math.round((mIconSize + mIconBorder) * mDensity);
         mMaxHeight = Math.round((mIconSize + 3 * mIconBorder) * mDensity);
-        mItemWidth = mMaxWidth + 10;
-
+        mItemWidth = mMaxWidth + 12;
 
         mDragHandleColor = prefs.getInt(
                 SettingsActivity.PREF_DRAG_HANDLE_COLOR, mDefaultColor);
@@ -160,6 +155,7 @@ public class SwitchConfiguration {
         mSpeedSwitchButtons = Utils.buttonStringToMap(prefs.getString(SettingsActivity.PREF_SPEED_SWITCHER_BUTTON_NEW,
                 SettingsActivity.PREF_SPEED_SWITCHER_BUTTON_DEFAULT_NEW), SettingsActivity.PREF_SPEED_SWITCHER_BUTTON_DEFAULT_NEW);
         mLimitItemsX = prefs.getInt(SettingsActivity.PREF_SPEED_SWITCHER_ITEMS, 10);
+        mFlatStyle = prefs.getBoolean(SettingsActivity.PREF_FLAT_STYLE, false);
     }
 
     // includes rotation
@@ -187,7 +183,7 @@ public class SwitchConfiguration {
             return Math.max(mItemWidth * 6,
                 (int) (getCurrentDisplayWidth() * 0.66f));
         }
-        return getCurrentDisplayWidth() - mHorizontalMargin;
+        return getCurrentDisplayWidth();
     }
 
     public int getCurrentOffsetStart() {

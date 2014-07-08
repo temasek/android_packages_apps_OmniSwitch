@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.omnirom.omniswitch.ui.BitmapUtils;
+import org.omnirom.omniswitch.ui.ColorDrawableWithDimensions;
 import org.omnirom.omniswitch.ui.IconPackHelper;
 
 import android.app.ActivityManager;
@@ -32,6 +33,8 @@ import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
+import android.graphics.Color;
+import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.os.AsyncTask;
 import android.os.Handler;
@@ -45,7 +48,6 @@ public class RecentTasksLoader {
     private static final int DISPLAY_TASKS = 20;
     private static final int MAX_TASKS = DISPLAY_TASKS + 1; // allow extra for
                                                             // non-apps
-
     private Context mContext;
     private AsyncTask<Void, List<TaskDescription>, Void> mTaskLoader;
     private Handler mHandler;
@@ -53,6 +55,8 @@ public class RecentTasksLoader {
     private boolean mPreloaded;
     private SwitchManager mSwitchManager;
     private ActivityManager mActivityManager;
+    private Drawable mDefaultThumbnailBackground;
+    private PreloadTaskRunnable mPreloadTasksRunnable;
 
     private enum State {
         LOADING, IDLE
@@ -79,6 +83,14 @@ public class RecentTasksLoader {
         mLoadedTasks = new ArrayList<TaskDescription>();
         mActivityManager = (ActivityManager)
                 mContext.getSystemService(Context.ACTIVITY_SERVICE);
+
+        // Render the default thumbnail background
+        int thumbnailWidth = (int) context.getResources().getDimensionPixelSize(
+                R.dimen.thumbnail_width);
+        int thumbnailHeight = (int) context.getResources()
+                .getDimensionPixelSize(R.dimen.thumbnail_height);
+        mDefaultThumbnailBackground = new ColorDrawableWithDimensions(
+                Color.BLACK, thumbnailWidth, thumbnailHeight);
     }
 
     public List<TaskDescription> getLoadedTasks() {
@@ -105,6 +117,8 @@ public class RecentTasksLoader {
     TaskDescription createTaskDescription(int taskId, int persistentTaskId,
             Intent baseIntent, ComponentName origActivity,
             CharSequence description) {
+        // clear source bounds to find matching package intent
+        baseIntent.setSourceBounds(null);
         Intent intent = new Intent(baseIntent);
         if (origActivity != null) {
             intent.setComponent(origActivity);
@@ -136,13 +150,18 @@ public class RecentTasksLoader {
         return null;
     }
 
-    Runnable mPreloadTasksRunnable = new Runnable() {
+    private class PreloadTaskRunnable implements Runnable {
+        @Override
         public void run() {
+            if (DEBUG){
+                Log.d(TAG, "preload start " + System.currentTimeMillis());
+            }
             loadTasksInBackground(null);
         }
-    };
+    }
 
     public void preloadTasks() {
+        mPreloadTasksRunnable = new PreloadTaskRunnable();
         mHandler.post(mPreloadTasksRunnable);
     }
 
@@ -150,10 +169,13 @@ public class RecentTasksLoader {
         if (DEBUG){
             Log.d(TAG, "cancelLoadingTasks state = " + mState);
         }
-        mHandler.removeCallbacks(mPreloadTasksRunnable);
         if (mTaskLoader != null) {
             mTaskLoader.cancel(false);
             mTaskLoader = null;
+        }
+        if (mPreloadTasksRunnable != null) {
+            mHandler.removeCallbacks(mPreloadTasksRunnable);
+            mPreloadTasksRunnable = null;
         }
         mLoadedTasks.clear();
         mPreloaded = false;
@@ -176,6 +198,9 @@ public class RecentTasksLoader {
         }
 
         if (mState != State.IDLE) {
+            if (DEBUG){
+                Log.d(TAG, "waiting for done");
+            }
             return;
         }
         if (DEBUG){
@@ -242,7 +267,8 @@ public class RecentTasksLoader {
                             recentInfo.origActivity, recentInfo.description);
 
                     if (item != null) {
-                        // TODO we would not need to do that if already loaded
+                        item.setInitThumb(true);
+                        item.setThumb(mDefaultThumbnailBackground);
                         mLoadedTasks.add(item);
                         loadTaskIcon(item);
                     }
@@ -302,10 +328,41 @@ public class RecentTasksLoader {
         return BitmapUtils.getDefaultActivityIcon(mContext);
     }
 
-    public Bitmap loadThumbnail(TaskDescription td) {
-        final ActivityManager am = (ActivityManager)
-                mContext.getSystemService(Context.ACTIVITY_SERVICE);
-        final PackageManager pm = mContext.getPackageManager();
-        return am.getTaskTopThumbnail(td.persistentTaskId);
+    public void loadThumbnail(final TaskDescription td) {
+        Drawable d = td.getThumb();
+        if (d == null || td.isInitThumb()){
+            AsyncTask<Void, TaskDescription, Void> thumbnailLoader = new AsyncTask<Void, TaskDescription, Void>() {
+                @Override
+                protected void onProgressUpdate(TaskDescription... values) {
+                }
+                @Override
+                protected Void doInBackground(Void... params) {
+                    final int origPri = Process.getThreadPriority(Process.myTid());
+                    Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND);
+
+                    if (DEBUG){
+                        Log.d(TAG, "load thumb " + td);
+                    }
+
+                    td.setInitThumb(false);
+                    if (hasSystemPermission(mContext)){
+                        Bitmap b = mActivityManager.getTaskTopThumbnail(td.persistentTaskId);
+                        if (b != null) {
+                            td.setThumb(new BitmapDrawable(mContext.getResources(), b));
+                        }
+                    }
+
+                    Process.setThreadPriority(origPri);
+                    return null;
+                }
+            };
+            thumbnailLoader.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+        }
+    }
+
+    private boolean hasSystemPermission(Context context) {
+        int result = context
+                .checkCallingOrSelfPermission(android.Manifest.permission.READ_FRAME_BUFFER);
+        return result == android.content.pm.PackageManager.PERMISSION_GRANTED;
     }
 }

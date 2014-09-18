@@ -34,14 +34,12 @@ import java.util.Queue;
 import org.omnirom.omniswitch.R;
 
 import android.annotation.SuppressLint;
-import android.annotation.TargetApi;
 import android.content.Context;
 import android.content.res.TypedArray;
 import android.database.DataSetObserver;
 import android.graphics.Canvas;
 import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.Parcelable;
 import android.util.AttributeSet;
@@ -100,11 +98,6 @@ public class HorizontalListView extends AdapterView<ListAdapter> {
      */
     private static final int INSERT_AT_END_OF_LIST = -1;
     private static final int INSERT_AT_START_OF_LIST = 0;
-
-    /** The velocity to use for overscroll absorption */
-    private static final float FLING_DEFAULT_ABSORB_VELOCITY = 30f;
-    /** The friction amount to use for the fling tracker */
-    private static final float FLING_FRICTION = 0.009f;
 
     /**
      * Used for tracking the state data necessary to restore the
@@ -243,9 +236,12 @@ public class HorizontalListView extends AdapterView<ListAdapter> {
     private SwipeDismissHorizontalListViewTouchListener mSwipeListener;
 
     private SelectionListener mSelectionListener;
-    
+
     private float mDownX;
     private int mSlop;
+
+    // amount of x scolling until a running swipe gets canceled
+    private int mScrollXThreshold;
 
     public HorizontalListView(Context context, AttributeSet attrs) {
         super(context, attrs);
@@ -257,14 +253,9 @@ public class HorizontalListView extends AdapterView<ListAdapter> {
         retrieveXmlConfiguration(context, attrs);
         setWillNotDraw(false);
 
-        // If the OS version is high enough then set the friction on the fling
-        // tracker */
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
-            HoneycombPlus.setFriction(mFlingTracker, FLING_FRICTION);
-        }
         ViewConfiguration vc = ViewConfiguration.get(context);
         mSlop = vc.getScaledTouchSlop();
-
+        mScrollXThreshold = mSlop * 8;
     }
 
     /**
@@ -687,6 +678,7 @@ public class HorizontalListView extends AdapterView<ListAdapter> {
             }
         } else {
             // Still in a fling so schedule the next frame
+            removeCallbacks(mDelayedLayout);
             postDelayed(mDelayedLayout, 10);
         }
     }
@@ -731,16 +723,7 @@ public class HorizontalListView extends AdapterView<ListAdapter> {
 
     /** Determines the current fling absorb velocity */
     private float determineFlingAbsorbVelocity() {
-        // If the OS version is high enough get the real velocity */
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.ICE_CREAM_SANDWICH) {
-            return IceCreamSandwichPlus.getCurrVelocity(mFlingTracker);
-        } else {
-            // Unable to get the velocity so just return a default.
-            // In actuality this is never used since EdgeEffectCompat does not
-            // draw anything unless the device is ICS+.
-            // Less then ICS EdgeEffectCompat essentially performs a NOP.
-            return FLING_DEFAULT_ABSORB_VELOCITY;
-        }
+        return mFlingTracker.getCurrVelocity();
     }
 
     /** Use to schedule a request layout via a runnable */
@@ -1003,7 +986,7 @@ public class HorizontalListView extends AdapterView<ListAdapter> {
 
     /** Scroll to the provided offset */
     public void scrollTo(int x) {
-        mFlingTracker.startScroll(mNextX, 0, x - mNextX, 0);
+        mFlingTracker.startScroll(mNextX, 0, x - mNextX, 0, 0);
         setCurrentScrollState(OnScrollStateChangedListener.ScrollState.SCROLL_STATE_FLING);
         requestLayout();
     }
@@ -1129,7 +1112,7 @@ public class HorizontalListView extends AdapterView<ListAdapter> {
 
     protected boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX,
             float velocityY) {
-        mFlingTracker.fling(mNextX, 0, (int) -velocityX, 0, 0, mMaxX, 0, 0);
+        mFlingTracker.fling(mNextX, 0, (int) -velocityX, 0, -Integer.MAX_VALUE, Integer.MAX_VALUE, 0, 0);
         setCurrentScrollState(OnScrollStateChangedListener.ScrollState.SCROLL_STATE_FLING);
         requestLayout();
         return true;
@@ -1211,11 +1194,17 @@ public class HorizontalListView extends AdapterView<ListAdapter> {
             if(DEBUG){
                 Log.d(TAG, "onFling");
             }
-            if (mSwipeListener!=null && !mSwipeListener.isSwiping()) {
+            float deltaX = Math.abs(mDownX - e2.getRawX());
+
+            if (deltaX > mSlop && mSwipeListener!=null && !mSwipeListener.isSwiping()) {
                 mSwipeListener.setEnabled(false);
             } else {
                 boolean res = false;
                 if(mSwipeListener!=null){
+                    if (deltaX > mScrollXThreshold && mSwipeListener.isSwiping()){
+                        mSwipeListener.cancelSwipe();
+                        return true;
+                    }
                     res = mSwipeListener.onTouch(null, e2);
                 }
 
@@ -1241,6 +1230,10 @@ public class HorizontalListView extends AdapterView<ListAdapter> {
             } else {
                 boolean res = false;
                 if(mSwipeListener!=null){
+                    if (deltaX > mScrollXThreshold && mSwipeListener.isSwiping()){
+                        mSwipeListener.cancelSwipe();
+                        return true;
+                    }
                     res = mSwipeListener.onTouch(null, e2);
                 }
 
@@ -1290,21 +1283,23 @@ public class HorizontalListView extends AdapterView<ListAdapter> {
 
         @Override
         public void onLongPress(MotionEvent e) {
-            unpressTouchedChild();
+            OnItemLongClickListener onItemLongClickListener = getOnItemLongClickListener();
+            if (onItemLongClickListener != null) {
+                unpressTouchedChild();
 
-            final int index = getChildIndex((int) e.getX(), (int) e.getY());
-            if (index >= 0 && !mBlockTouchAction) {
-                View child = getChildAt(index);
-                OnItemLongClickListener onItemLongClickListener = getOnItemLongClickListener();
-                if (onItemLongClickListener != null) {
-                    int adapterIndex = mLeftViewAdapterIndex + index;
-                    boolean handled = onItemLongClickListener.onItemLongClick(
-                            HorizontalListView.this, child, adapterIndex,
-                            mAdapter.getItemId(adapterIndex));
+                final int index = getChildIndex((int) e.getX(), (int) e.getY());
+                if (index >= 0 && !mBlockTouchAction) {
+                    View child = getChildAt(index);
+                    if (onItemLongClickListener != null) {
+                        int adapterIndex = mLeftViewAdapterIndex + index;
+                        boolean handled = onItemLongClickListener.onItemLongClick(
+                                HorizontalListView.this, child, adapterIndex,
+                                mAdapter.getItemId(adapterIndex));
 
-                    if (handled) {
-                        // BZZZTT!!1!
-                        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+                        if (handled) {
+                            // BZZZTT!!1!
+                            performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+                        }
                     }
                 }
             }
@@ -1563,40 +1558,6 @@ public class HorizontalListView extends AdapterView<ListAdapter> {
         this.mSwipeListener = mSwipeListener;
     }
 
-    @TargetApi(11)
-    /** Wrapper class to protect access to API version 11 and above features */
-    private static final class HoneycombPlus {
-        static {
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.HONEYCOMB) {
-                throw new RuntimeException(
-                        "Should not get to HoneycombPlus class unless sdk is >= 11!");
-            }
-        }
-
-        /** Sets the friction for the provided scroller */
-        public static void setFriction(Scroller scroller, float friction) {
-            if (scroller != null) {
-                scroller.setFriction(friction);
-            }
-        }
-    }
-
-    @TargetApi(14)
-    /** Wrapper class to protect access to API version 14 and above features */
-    private static final class IceCreamSandwichPlus {
-        static {
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.ICE_CREAM_SANDWICH) {
-                throw new RuntimeException(
-                        "Should not get to IceCreamSandwichPlus class unless sdk is >= 14!");
-            }
-        }
-
-        /** Gets the velocity for the provided scroller */
-        public static float getCurrVelocity(Scroller scroller) {
-            return scroller.getCurrVelocity();
-        }
-    }
-    
     public void setSelectionListener(SelectionListener listener){
         mSelectionListener = listener;
     }

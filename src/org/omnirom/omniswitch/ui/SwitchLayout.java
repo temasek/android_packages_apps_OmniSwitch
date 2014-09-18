@@ -17,36 +17,37 @@
  */
 package org.omnirom.omniswitch.ui;
 
-import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
+import org.omnirom.omniswitch.PackageManager;
 import org.omnirom.omniswitch.R;
 import org.omnirom.omniswitch.SettingsActivity;
 import org.omnirom.omniswitch.SwitchConfiguration;
 import org.omnirom.omniswitch.SwitchManager;
-import org.omnirom.omniswitch.SwitchService;
 import org.omnirom.omniswitch.TaskDescription;
 import org.omnirom.omniswitch.Utils;
 import org.omnirom.omniswitch.showcase.ShowcaseView;
 import org.omnirom.omniswitch.showcase.ShowcaseView.OnShowcaseEventListener;
 
+import android.animation.Animator;
+import android.animation.Animator.AnimatorListener;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ObjectAnimator;
+import android.animation.TimeInterpolator;
 import android.app.ActivityManager;
 import android.app.ActivityManager.MemoryInfo;
-import android.app.TaskStackBuilder;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.content.pm.PackageManager;
-import android.content.pm.PackageManager.NameNotFoundException;
+import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.graphics.Point;
 import android.graphics.drawable.Drawable;
-import android.net.Uri;
 import android.os.Handler;
 import android.preference.PreferenceManager;
-import android.provider.Settings;
+import android.text.TextUtils;
 import android.text.format.Formatter;
 import android.util.Log;
 import android.view.Gravity;
@@ -55,36 +56,50 @@ import android.view.LayoutInflater;
 import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.View.OnTouchListener;
 import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 import android.view.WindowManager;
-import android.view.animation.Animation;
-import android.view.animation.AnimationUtils;
+import android.view.animation.AccelerateInterpolator;
+import android.view.animation.DecelerateInterpolator;
+import android.view.animation.LinearInterpolator;
+import android.widget.AbsListView;
+import android.widget.AbsListView.OnScrollListener;
 import android.widget.AdapterView;
 import android.widget.AdapterView.OnItemClickListener;
 import android.widget.AdapterView.OnItemLongClickListener;
 import android.widget.ArrayAdapter;
 import android.widget.FrameLayout;
+import android.widget.GridView;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.PopupMenu;
+import android.widget.RelativeLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
 public class SwitchLayout implements OnShowcaseEventListener {
     private static final String TAG = "SwitchLayout";
     private static final boolean DEBUG = false;
-    private final static String KEY_SHOWCASE_FAVORITE = "showcase_favorite_done";
+    private static final String KEY_SHOWCASE_FAVORITE = "showcase_favorite_done";
+
+    private static final int FLIP_DURATION_OUT = 125;
+    private static final int FLIP_DURATION_IN = 225;
+    private static final int FLIP_DURATION_DEFAULT = 200;
+    private static final int SHOW_DURATION = 200;
+    private static final int HIDE_DURATION = 100;
 
     private WindowManager mWindowManager;
     private LayoutInflater mInflater;
     private HorizontalListView mRecentListHorizontal;
     private HorizontalListView mFavoriteListHorizontal;
-    private GlowImageButton mLastAppButton;
-    private GlowImageButton mKillAllButton;
-    private GlowImageButton mKillOtherButton;
-    private GlowImageButton mHomeButton;
-    private GlowImageButton mSettingsButton;
+    private PackageTextView mLastAppButton;
+    private PackageTextView mKillAllButton;
+    private PackageTextView mKillOtherButton;
+    private PackageTextView mHomeButton;
+    private PackageTextView mSettingsButton;
+    private PackageTextView mAllappsButton;
+    private PackageTextView mBackButton;
     private RecentListAdapter mRecentListAdapter;
     private FavoriteListAdapter mFavoriteListAdapter;
     private List<TaskDescription> mLoadedTasks;
@@ -99,8 +114,6 @@ public class SwitchLayout implements OnShowcaseEventListener {
     private TextView mForegroundProcessText;
     private Handler mHandler = new Handler();
     private List<String> mFavoriteList;
-    private List<Drawable> mFavoriteIcons;
-    private List<String> mFavoriteNames;
     private boolean mShowFavorites;
     private ShowcaseView mShowcaseView;
     private SharedPreferences mPrefs;
@@ -109,39 +122,62 @@ public class SwitchLayout implements OnShowcaseEventListener {
     private SwitchConfiguration mConfiguration;
     private ImageButton mOpenFavorite;
     private boolean mHasFavorites;
-    private boolean[] mButtons;
     private TextView mNoRecentApps;
     private boolean mTaskLoadDone;
     private boolean mUpdateNoRecentsTasksDone;
     private boolean mButtonsVisible = true;
     private Drawable[] mFavoriteDrawableDefault = new Drawable[2]; // 0 is down 1 is up
     private Drawable[] mFavoriteDrawableGlow = new Drawable[2]; // 0 is down 1 is up
+    private boolean mAutoClose = true;
+    private boolean mShowAppDrawer;
+    private GridView mAppDrawer;
+    private AppDrawerListAdapter mAppDrawerListAdapter;
+    private View mCurrentSelection;
+    private LinearLayout mRamUsageBarContainer;
+    private GlowSelector mPendingGlowSelector;
+    private LinearLayout mRecents;
+    private Animator mAppDrawerAnim;
+    private Animator mRecentsAnim;
+    private TimeInterpolator mAccelerateInterpolator = new AccelerateInterpolator();
+    private TimeInterpolator mDecelerateInterpolator = new DecelerateInterpolator();
+    private Animator mShowFavAnim;
+    private LinearInterpolator mLinearInterpolator = new LinearInterpolator();
+    private Animator mToggleOverlayAnim;
+    private boolean mVirtualBackKey;
+    private ButtonScrollView mButtonList;
+    private LinearLayout mButtonListItems;
+    private LinearLayout mButtonListContainer;
+    private List<PackageTextView> mActionList;
+    private boolean mHandleRecentsUpdate;
 
     private class RecentListAdapter extends ArrayAdapter<TaskDescription> {
 
         public RecentListAdapter(Context context, int resource,
                 List<TaskDescription> values) {
-            super(context, R.layout.recent_item_horizontal, resource, values);
+            super(context, R.layout.package_item, resource, values);
         }
 
         @Override
         public View getView(int position, View convertView, ViewGroup parent) {
-            View rowView = null;
             TaskDescription ad = mLoadedTasks.get(position);
+            
+            PackageTextView item = null;
+            if (convertView == null){
+                item = getRecentItemTemplate();
+            } else {
+                item = (PackageTextView) convertView;
+            }
+            item.setTask(ad, false);
 
-            rowView = mInflater.inflate(R.layout.recent_item_horizontal,
-                    parent, false);
-            final GlowTextView item = (GlowTextView) rowView
-                    .findViewById(R.id.recent_item);
             if (mConfiguration.mShowLabels) {
                 item.setText(ad.getLabel());
+            } else {
+                item.setText("");
             }
-            item.setMaxWidth(mConfiguration.mHorizontalMaxWidth);
-            item.setOriginalImage(ad.getIcon());
-            item.setCompoundDrawablesWithIntrinsicBounds(null,
-                    ad.getIcon(), null, null);
-
-            return rowView;
+            Drawable d = BitmapCache.getInstance(mContext).getResized(mContext.getResources(), ad, ad.getIcon(), mConfiguration, mConfiguration.mIconSize);
+            item.setOriginalImage(d);
+            item.setBackground(d);
+            return item;
         }
     }
 
@@ -149,41 +185,102 @@ public class SwitchLayout implements OnShowcaseEventListener {
 
         public FavoriteListAdapter(Context context, int resource,
                 List<String> values) {
-            super(context, R.layout.favorite_item, resource, values);
+            super(context, R.layout.package_item, resource, values);
         }
 
         @Override
         public View getView(int position, View convertView, ViewGroup parent) {
-            View rowView = null;
-            rowView = mInflater.inflate(R.layout.favorite_item, parent, false);
-            final GlowTextView item = (GlowTextView) rowView
-                    .findViewById(R.id.favorite_item);
-            if (mConfiguration.mShowLabels) {
-                item.setText(mFavoriteNames.get(position));
+            PackageTextView item = null;
+            if (convertView == null){
+                item = getFavoriteItemTemplate();
+            } else {
+                item = (PackageTextView) convertView;
             }
-            item.setMaxWidth(mConfiguration.mHorizontalMaxWidth);
-            item.setOriginalImage(mFavoriteIcons.get(position));
-            item.setCompoundDrawablesWithIntrinsicBounds(null,
-                    mFavoriteIcons.get(position), null, null);
-            return rowView;
+            String intent = mFavoriteList.get(position);
+
+            PackageManager.PackageItem packageItem = PackageManager.getInstance(mContext).getPackageItem(intent);
+            item.setIntent(packageItem.getIntent());
+            if (mConfiguration.mShowLabels) {
+                item.setText(packageItem.getTitle());
+            } else {
+                item.setText("");
+            }
+            Drawable d = BitmapCache.getInstance(mContext).getResized(mContext.getResources(), packageItem, mConfiguration, mConfiguration.mIconSize);
+            item.setOriginalImage(d);
+            item.setBackground(d);
+            return item;
+        }
+    }
+
+    private class AppDrawerListAdapter extends ArrayAdapter<PackageManager.PackageItem> implements OnTouchListener {
+
+        public AppDrawerListAdapter(Context context, int resource,
+                List<PackageManager.PackageItem> values) {
+            super(context, R.layout.package_item, resource, values);
+        }
+
+        @Override
+        public View getView(int position, View convertView, ViewGroup parent) {
+            PackageTextView item = null;
+            if (convertView == null){
+                item = getAppDrawerItemTemplate();
+            } else {
+                item = (PackageTextView) convertView;
+            }
+            PackageManager.PackageItem packageItem = PackageManager.getInstance(mContext).getPackageList().get(position);
+            item.setIntent(packageItem.getIntent());
+            if (mConfiguration.mShowLabels) {
+                item.setText(packageItem.getTitle());
+            } else {
+                item.setText("");
+            }
+            Drawable d = BitmapCache.getInstance(mContext).getResized(mContext.getResources(), packageItem, mConfiguration, mConfiguration.mIconSize);
+            item.setOriginalImage(d);
+            item.setBackground(d);
+            item.setOnTouchListener(this);
+            return item;
+        }
+
+        @Override
+        public boolean onTouch(View v, MotionEvent event) {
+            if(event.getAction() == MotionEvent.ACTION_DOWN){
+                mSelectionGlowListener.onItemSelected(v, true);
+            } else {
+                mSelectionGlowListener.onItemSelected(v, false);
+            }
+            return false;
         }
     }
 
     private HorizontalListView.SelectionListener mSelectionGlowListener = new HorizontalListView.SelectionListener() {
         @Override
         public void onItemSelected(View view, boolean selected) {
-            GlowTextView textView = (GlowTextView)((ViewGroup)view).getChildAt(0);
+            PackageTextView textView = (PackageTextView)view;
+            mCurrentSelection = textView;
+
             if(selected){
-                textView.setCompoundDrawablesWithIntrinsicBounds(null,
-                        Utils.getGlowDrawable(mContext.getResources(), 
-                                null,
-                                mConfiguration.mGlowColor,
-                                textView.getCompoundDrawables()[1])
-                                , null, null);
+                if (mPendingGlowSelector == null) {
+                    mPendingGlowSelector = new GlowSelector();
+                }
+                // TODO
+                //int tapTimeout = ViewConfiguration.getTapTimeout() / 2;
+                mView.postDelayed(mPendingGlowSelector, 50);
             } else {
-                textView.setCompoundDrawablesWithIntrinsicBounds(null,
-                        textView.getOriginalImage(), null, null);
+                mView.removeCallbacks(mPendingGlowSelector);
+                textView.setBackground(textView.getOriginalImage());
             }
+        }
+    };
+
+    final class GlowSelector implements Runnable {
+
+        @Override
+        public void run() {
+            PackageTextView textView = (PackageTextView)mCurrentSelection;
+
+            textView.setBackground(BitmapUtils.glow(mContext.getResources(),
+                    mConfiguration.mFlatStyle ? mConfiguration.mFlatGlowColor : mConfiguration.mGlowColor,
+                            textView.getBackground()));
         }
     };
 
@@ -202,34 +299,43 @@ public class SwitchLayout implements OnShowcaseEventListener {
                 .getSystemService(Context.LAYOUT_INFLATER_SERVICE);
         mLoadedTasks = new ArrayList<TaskDescription>();
         mRecentListAdapter = new RecentListAdapter(mContext,
-                android.R.layout.simple_list_item_multiple_choice, mLoadedTasks);
+                android.R.layout.simple_list_item_single_choice,
+                mLoadedTasks);
         mFavoriteList = new ArrayList<String>();
         mFavoriteListAdapter = new FavoriteListAdapter(mContext,
-                android.R.layout.simple_list_item_multiple_choice,
+                android.R.layout.simple_list_item_single_choice,
                 mFavoriteList);
+        mAppDrawerListAdapter = new AppDrawerListAdapter(mContext,
+                android.R.layout.simple_list_item_single_choice,
+                PackageManager.getInstance(mContext).getPackageList());
+        // default on first start
+        mShowFavorites = mPrefs.getBoolean(SettingsActivity.PREF_SHOW_FAVORITE, false);
+        mActionList = new ArrayList<PackageTextView>();
     }
 
     private synchronized void createView() {
-        mView = mInflater.inflate(R.layout.recents_list_horizontal, null,
-                false);
-        mRecentListHorizontal = (HorizontalListView) mView
-                .findViewById(R.id.recent_list_horizontal);
-        
+        mView = mInflater.inflate(R.layout.recents_list_horizontal, null, false);
+
+        mRecents = (LinearLayout) mView.findViewById(R.id.recents);
+
+        mRecentListHorizontal = (HorizontalListView) mView.findViewById(R.id.recent_list_horizontal);
+
         mNoRecentApps = (TextView) mView
                 .findViewById(R.id.no_recent_apps);
-        
+
+        mButtonList = (ButtonScrollView) mView.findViewById(R.id.button_list);
+        mButtonList.setHorizontalScrollBarEnabled(false);
+        mButtonListItems = (LinearLayout) mView.findViewById(R.id.button_list_items);
+        mButtonListContainer = (LinearLayout) mView.findViewById(R.id.button_list_container);
         mRecentListHorizontal.setSelectionListener(mSelectionGlowListener);
-        
+
         mRecentListHorizontal
         .setOnItemClickListener(new OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent,
                     View view, int position, long id) {
-                if(DEBUG){
-                    Log.d(TAG, "onItemClick");
-                }
                 TaskDescription task = mLoadedTasks.get(position);
-                mRecentsManager.switchTask(task);
+                mRecentsManager.switchTask(task, mAutoClose);
             }
         });
 
@@ -238,11 +344,8 @@ public class SwitchLayout implements OnShowcaseEventListener {
             @Override
             public boolean onItemLongClick(AdapterView<?> parent,
                     View view, int position, long id) {
-                if(DEBUG){
-                    Log.d(TAG, "onItemLongClick");
-                }
                 TaskDescription task = mLoadedTasks.get(position);
-                handleLongPress(task, view);
+                handleLongPressRecent(task, view);
                 return true;
             }
         });
@@ -252,17 +355,19 @@ public class SwitchLayout implements OnShowcaseEventListener {
                 new SwipeDismissHorizontalListViewTouchListener.DismissCallbacks() {
                     public void onDismiss(HorizontalListView listView,
                             int[] reverseSortedPositions) {
-                        for (int position : reverseSortedPositions) {
-                            TaskDescription ad = mRecentListAdapter
-                                    .getItem(position);
+                        Log.d(TAG, "onDismiss: " + mLoadedTasks.size() + ":" + reverseSortedPositions[0]);
+                        // TODO
+                        try {
+                            TaskDescription ad = mLoadedTasks.get(reverseSortedPositions[0]);
                             mRecentsManager.killTask(ad);
-                            break;
+                        } catch(IndexOutOfBoundsException e){
+                            // ignored
                         }
                     }
 
                     @Override
                     public boolean canDismiss(int position) {
-                        return true;
+                        return position < mLoadedTasks.size();
                     }
                 });
 
@@ -272,17 +377,6 @@ public class SwitchLayout implements OnShowcaseEventListener {
         mOpenFavorite = (ImageButton) mView
                 .findViewById(R.id.openFavorites);
 
-        mFavoriteDrawableDefault[0] = Utils.shadow(mContext.getResources(), mContext.getResources().getDrawable(R.drawable.arrow_up));
-        mFavoriteDrawableDefault[1] = Utils.shadow(mContext.getResources(), mContext.getResources().getDrawable(R.drawable.arrow_down));
-        mFavoriteDrawableGlow[0] = Utils.getGlowDrawable(mContext.getResources(), 
-                "arrow_up",
-                mConfiguration.mGlowColor,
-                mContext.getResources().getDrawable(R.drawable.arrow_up));
-        mFavoriteDrawableGlow[1] = Utils.getGlowDrawable(mContext.getResources(), 
-                "arrow_down",
-                mConfiguration.mGlowColor,
-                mContext.getResources().getDrawable(R.drawable.arrow_down));
-
         mOpenFavorite.setOnTouchListener(new View.OnTouchListener(){
             @Override
             public boolean onTouch(View v, MotionEvent event) {
@@ -291,29 +385,13 @@ public class SwitchLayout implements OnShowcaseEventListener {
                             mShowFavorites ? 0 : 1,
                                     true);
 
-                    mShowFavorites = !mShowFavorites;
-
-                    if (mConfiguration.mAnimate) {
-                        mFavoriteListHorizontal
-                        .startAnimation(mShowFavorites ? getShowFavoriteAnimation()
-                                : getHideFavoriteAnimation());
-                    } else {
-                        mFavoriteListHorizontal
-                        .setVisibility(mShowFavorites ? View.VISIBLE
-                                : View.GONE);
-                    }
-                } else if(event.getAction()==MotionEvent.ACTION_UP){
-                    if (!mConfiguration.mAnimate) {
-                        setButtonGlow(mOpenFavorite,
-                                mShowFavorites ? 0 : 1,
-                                        false);
-                    }
+                    toggleFavorites();
                 }
                 return true;
             }});
 
         mFavoriteListHorizontal = (HorizontalListView) mView
-                .findViewById(R.id.favorite_list_horizontal);
+                  .findViewById(R.id.favorite_list_horizontal);
 
         mFavoriteListHorizontal.setSelectionListener(mSelectionGlowListener);
 
@@ -322,248 +400,150 @@ public class SwitchLayout implements OnShowcaseEventListener {
             @Override
             public void onItemClick(AdapterView<?> parent,
                     View view, int position, long id) {
-                if(DEBUG){
-                    Log.d(TAG, "onItemClick");
-                }
                 String intent = mFavoriteList.get(position);
-                mRecentsManager.startIntentFromtString(intent);
+                mRecentsManager.startIntentFromtString(intent, true);
             }
         });
         mFavoriteListHorizontal.setAdapter(mFavoriteListAdapter);
 
-        mHomeButton = (GlowImageButton) mView.findViewById(R.id.home);
-        mHomeButton.setOriginalImage(Utils.shadow(mContext.getResources(), mContext.getResources().getDrawable(R.drawable.home)));
-        mHomeButton.setGlowImage(Utils.getGlowDrawable(mContext.getResources(), 
-                "home",
-                mConfiguration.mGlowColor,
-                mContext.getResources().getDrawable(R.drawable.home)));
-        mHomeButton.setOnTouchListener(new View.OnTouchListener(){
+        mFavoriteListHorizontal
+        .setOnItemLongClickListener(new OnItemLongClickListener() {
             @Override
-            public boolean onTouch(View v, MotionEvent event) {
-                if(event.getAction()==MotionEvent.ACTION_DOWN){
-                    mHomeButton.setImageDrawable(mHomeButton.getGlowImage());
-                } else if(event.getAction()==MotionEvent.ACTION_UP){
-                    mHomeButton.setImageDrawable(mHomeButton.getOriginalImage());
-                }
-                v.onTouchEvent(event);
-                return true;
-            }});
-        mHomeButton.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                mRecentsManager.dismissAndGoHome();
-            }
-        });
-        mHomeButton.setOnLongClickListener(new View.OnLongClickListener() {
-            @Override
-            public boolean onLongClick(View v) {
-                Toast.makeText(mContext, 
-                        mContext.getResources().getString(R.string.home_help), Toast.LENGTH_SHORT).show();
+            public boolean onItemLongClick(AdapterView<?> parent,
+                    View view, int position, long id) {
+                String intent = mFavoriteList.get(position);
+                PackageManager.PackageItem packageItem = PackageManager.getInstance(mContext).getPackageItem(intent);
+                handleLongPressFavorite(packageItem, view);
                 return true;
             }
         });
 
-        mLastAppButton = (GlowImageButton) mView.findViewById(R.id.lastApp);
-        mLastAppButton.setOriginalImage(Utils.shadow(mContext.getResources(), mContext.getResources().getDrawable(R.drawable.lastapp)));
-        mLastAppButton.setGlowImage(Utils.getGlowDrawable(mContext.getResources(), 
-                "lastapp",
-                mConfiguration.mGlowColor,
-                mContext.getResources().getDrawable(R.drawable.lastapp)));
-        mLastAppButton.setOnTouchListener(new View.OnTouchListener(){
-            @Override
-            public boolean onTouch(View v, MotionEvent event) {
-                if(event.getAction()==MotionEvent.ACTION_DOWN){
-                    mLastAppButton.setImageDrawable(mLastAppButton.getGlowImage());
-                } else if(event.getAction()==MotionEvent.ACTION_UP){
-                    mLastAppButton.setImageDrawable(mLastAppButton.getOriginalImage());
-                }
-                v.onTouchEvent(event);
-                return true;
-            }});
-
-        mLastAppButton.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                mRecentsManager.toggleLastApp();
-            }
-        });
-        mLastAppButton.setOnLongClickListener(new View.OnLongClickListener() {
-            @Override
-            public boolean onLongClick(View v) {
-                Toast.makeText(mContext, 
-                        mContext.getResources().getString(R.string.toogle_last_app_help), Toast.LENGTH_SHORT).show();
-                return true;
-            }
-        });
-        mKillAllButton = (GlowImageButton) mView.findViewById(R.id.killAll);
-        mKillAllButton.setOriginalImage(Utils.shadow(mContext.getResources(), mContext.getResources().getDrawable(R.drawable.kill_all)));
-        mKillAllButton.setGlowImage(Utils.getGlowDrawable(mContext.getResources(), 
-                "kill_other",
-                mConfiguration.mGlowColor,
-                mContext.getResources().getDrawable(R.drawable.kill_all)));
-        mKillAllButton.setOnTouchListener(new View.OnTouchListener(){
-            @Override
-            public boolean onTouch(View v, MotionEvent event) {
-                if(event.getAction()==MotionEvent.ACTION_DOWN){
-                    mKillAllButton.setImageDrawable(mKillAllButton.getGlowImage());
-                } else if(event.getAction()==MotionEvent.ACTION_UP){
-                    mKillAllButton.setImageDrawable(mKillAllButton.getOriginalImage());
-                }
-                v.onTouchEvent(event);
-                return true;
-            }});
-        mKillAllButton.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                mRecentsManager.killAll();
-            }
-        });
-
-        mKillAllButton.setOnLongClickListener(new View.OnLongClickListener() {
-            @Override
-            public boolean onLongClick(View v) {
-                Toast.makeText(mContext, 
-                        mContext.getResources().getString(R.string.kill_all_apps_help), Toast.LENGTH_SHORT).show();                return true;
-            }
-        });
-
-        mKillOtherButton = (GlowImageButton) mView.findViewById(R.id.killOther);
-        mKillOtherButton.setOriginalImage(Utils.shadow(mContext.getResources(), mContext.getResources().getDrawable(R.drawable.kill_other)));
-        mKillOtherButton.setGlowImage(Utils.getGlowDrawable(mContext.getResources(), 
-                "kill_other",
-                mConfiguration.mGlowColor,
-                mContext.getResources().getDrawable(R.drawable.kill_other)));
-        mKillOtherButton.setOnTouchListener(new View.OnTouchListener(){
-            @Override
-            public boolean onTouch(View v, MotionEvent event) {
-                if(event.getAction()==MotionEvent.ACTION_DOWN){
-                    mKillOtherButton.setImageDrawable(mKillOtherButton.getGlowImage());
-                } else if(event.getAction()==MotionEvent.ACTION_UP){
-                    mKillOtherButton.setImageDrawable(mKillOtherButton.getOriginalImage());
-                }
-                v.onTouchEvent(event);
-                return true;
-            }});
-
-        mKillOtherButton.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                mRecentsManager.killOther();
-            }
-        });
-        mKillOtherButton.setOnLongClickListener(new View.OnLongClickListener() {
-            @Override
-            public boolean onLongClick(View v) {
-                Toast.makeText(mContext, 
-                        mContext.getResources().getString(R.string.kill_other_apps_help), Toast.LENGTH_SHORT).show();
-                return true;
-            }
-        });
-
-        mSettingsButton = (GlowImageButton) mView.findViewById(R.id.settings);
-        mSettingsButton.setOriginalImage(Utils.shadow(mContext.getResources(), mContext.getResources().getDrawable(R.drawable.settings)));
-        mSettingsButton.setGlowImage(Utils.getGlowDrawable(mContext.getResources(), 
-                "settings",
-                mConfiguration.mGlowColor,
-                mContext.getResources().getDrawable(R.drawable.settings)));
-
-        mSettingsButton.setOnTouchListener(new View.OnTouchListener(){
-            @Override
-            public boolean onTouch(View v, MotionEvent event) {
-                if(event.getAction()==MotionEvent.ACTION_DOWN){
-                    mSettingsButton.setImageDrawable(mSettingsButton.getGlowImage());
-                } else if(event.getAction()==MotionEvent.ACTION_UP){
-                    mSettingsButton.setImageDrawable(mSettingsButton.getOriginalImage());
-                }
-                v.onTouchEvent(event);
-                return true;
-            }});
-        
-        mSettingsButton.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                Intent hideRecent = new Intent(
-                        SwitchService.RecentsReceiver.ACTION_HIDE_OVERLAY);
-                mContext.sendBroadcast(hideRecent);
-
-                Intent mainActivity = new Intent(mContext,
-                        SettingsActivity.class);
-                mainActivity.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK
-                        | Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS);
-                mContext.startActivity(mainActivity);
-            }
-        });
-        //mSettingsButton.setImageDrawable(Utils.getGlow(mContext.getResources(), "settings", mContext.getResources().getDrawable(R.drawable.settings)));
-        mSettingsButton.setOnLongClickListener(new View.OnLongClickListener() {
-            @Override
-            public boolean onLongClick(View v) {
-                Toast.makeText(mContext, 
-                        mContext.getResources().getString(R.string.settings_help), Toast.LENGTH_SHORT).show();
-                return true;
-            }
-        });
-        
         // touches inside the overlay should not hide it
         mView.setOnTouchListener(new View.OnTouchListener() {
             @Override
             public boolean onTouch(View v, MotionEvent event) {
-                if(DEBUG){
-                    Log.d(TAG, "mView:onTouch");
-                }
                 return true;
             }
         });
 
+        mRamUsageBarContainer = (LinearLayout) mView.findViewById(R.id.ram_usage_bar_container);
         mRamUsageBar = (LinearColorBar) mView.findViewById(R.id.ram_usage_bar);
         mForegroundProcessText = (TextView) mView
                 .findViewById(R.id.foregroundText);
         mBackgroundProcessText = (TextView) mView
                 .findViewById(R.id.backgroundText);
 
+        mAppDrawer = (GridView) mView.findViewById(R.id.app_drawer);
+        mAppDrawer.setOnItemClickListener(new OnItemClickListener(){
+            @Override
+            public void onItemClick(AdapterView<?> parent, View view,
+                    int position, long id) {
+                PackageManager.PackageItem packageItem = PackageManager.getInstance(mContext).getPackageList().get(position);
+                mRecentsManager.startIntentFromtString(packageItem.getIntent(), true);
+            }});
+        mAppDrawer.setOnTouchListener(new OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                if (event.getAction() == MotionEvent.ACTION_UP){
+                    if (mCurrentSelection != null){
+                        mSelectionGlowListener.onItemSelected(mCurrentSelection, false);
+                        mCurrentSelection = null;
+                    }
+                }
+                return false;
+            }});
+        mAppDrawer.setOnScrollListener(new OnScrollListener() {
+            @Override
+            public void onScrollStateChanged(AbsListView view, int scrollState) {
+                if (mCurrentSelection != null){
+                    mSelectionGlowListener.onItemSelected(mCurrentSelection, false);
+                    mCurrentSelection = null;
+                }
+            }
+
+            @Override
+            public void onScroll(AbsListView view, int firstVisibleItem,
+                    int visibleItemCount, int totalItemCount) {
+            }});
+
+        mAppDrawer.setAdapter(mAppDrawerListAdapter);
+
+        mAppDrawer
+        .setOnItemLongClickListener(new OnItemLongClickListener() {
+            @Override
+            public boolean onItemLongClick(AdapterView<?> parent,
+                    View view, int position, long id) {
+                PackageManager.PackageItem packageItem = PackageManager.getInstance(mContext).getPackageList().get(position);
+                handleLongPressAppDrawer(packageItem, view);
+                return true;
+            }
+        });
+
         mPopupView = new FrameLayout(mContext);
-        mPopupView.setBackground(mContext.getResources().getDrawable(R.drawable.overlay_bg));
+        mPopupView.addView(mView);
 
         mPopupView.setOnTouchListener(new View.OnTouchListener() {
-        	@Override
-        	public boolean onTouch(View v, MotionEvent event) {
-        		if(event.getAction()==MotionEvent.ACTION_DOWN){
-        			if (mShowing) {
-        				if(DEBUG){
-        					Log.d(TAG, "mPopupView:onTouch");
-        				}
-        				Intent hideRecent = new Intent(
-        						SwitchService.RecentsReceiver.ACTION_HIDE_OVERLAY);
-        				mContext.sendBroadcast(hideRecent);
-        				return true;
-        			}
-        		}
-        		return false;
-        	}
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                    if (mShowing) {
+                        if (DEBUG) {
+                            Log.d(TAG, "onTouch");
+                        }
+                        mRecentsManager.close();
+                        return true;
+                    }
+                }
+                return false;
+            }
         });
         mPopupView.setOnKeyListener(new View.OnKeyListener() {
-        	@Override
-        	public boolean onKey(View v, int keyCode, KeyEvent event) {
-        		if(event.getAction()==KeyEvent.ACTION_DOWN){
-        			if (mShowing) {
-        				if(DEBUG){
-        					Log.d(TAG, "onKey");
-        				}
-        				Intent hideRecent = new Intent(
-        						SwitchService.RecentsReceiver.ACTION_HIDE_OVERLAY);
-        				mContext.sendBroadcast(hideRecent);
-        				return true;
-        			}
-        		}
-        		return false;
-        	}
+            @Override
+            public boolean onKey(View v, int keyCode, KeyEvent event) {
+                if (keyCode == KeyEvent.KEYCODE_BACK &&
+                        event.getAction() == KeyEvent.ACTION_DOWN &&
+                        event.getRepeatCount() == 0) {
+                    if (mShowing) {
+                        if (DEBUG) {
+                            Log.d(TAG, "onKey");
+                        }
+                        mRecentsManager.close();
+                        return true;
+                    }
+                }
+                return false;
+            }
         });
     }
 
-    private synchronized void updateNoRecentsApps(){
-        if(mUpdateNoRecentsTasksDone){
+    private synchronized void updateRecentsAppsList(boolean force){
+        if(DEBUG){
+            Log.d(TAG, "updateRecentsAppsList " + System.currentTimeMillis());
+        }
+        if(!force && mUpdateNoRecentsTasksDone){
+            if(DEBUG){
+                Log.d(TAG, "!force && mUpdateNoRecentsTasksDone");
+            }
             return;
         }
         if(mNoRecentApps == null || mRecentListHorizontal == null){
+            if(DEBUG){
+                Log.d(TAG, "mNoRecentApps == null || mRecentListHorizontal == null");
+            }
             return;
         }
+
         if(!mTaskLoadDone){
+            if(DEBUG){
+                Log.d(TAG, "!mTaskLoadDone");
+            }
             return;
         }
+        if(DEBUG){
+            Log.d(TAG, "updateRecentsAppsList2");
+        }
+        mRecentListAdapter.notifyDataSetChanged();
+
         if(mLoadedTasks.size()!=0){
             mNoRecentApps.setVisibility(View.GONE);
             mRecentListHorizontal.setVisibility(View.VISIBLE);
@@ -575,17 +555,60 @@ public class SwitchLayout implements OnShowcaseEventListener {
     }
 
     private synchronized void initView(){
-        mRamUsageBar.setVisibility(mConfiguration.mShowRambar ? View.VISIBLE : View.GONE);
-        mFavoriteListHorizontal.setLayoutParams(getListviewParams());
-        mRecentListHorizontal.setLayoutParams(getListviewParams());
-        mNoRecentApps.setLayoutParams(getListviewParams());
+        updateStyle();
+
+        if (mConfiguration.mFlatStyle) {
+            mView.setBackground(mContext.getResources().getDrawable(R.drawable.overlay_bg_flat));
+        } else {
+            mView.setBackground(mContext.getResources().getDrawable(R.drawable.overlay_bg));
+            if (!mConfiguration.mDimBehind){
+                if (mConfiguration.mGravity == 0){
+                    mView.setBackground(mContext.getResources().getDrawable(R.drawable.overlay_bg));
+                } else {
+                    if (mConfiguration.mLocation == 0){
+                        mView.setBackground(mContext.getResources().getDrawable(R.drawable.overlay_bg_right));
+                    } else {
+                        mView.setBackground(mContext.getResources().getDrawable(R.drawable.overlay_bg_left));
+                    }
+                }
+                mView.getBackground().setAlpha((int) (255 * mConfiguration.mBackgroundOpacity));
+            } else {
+                mView.getBackground().setAlpha(0);
+            }
+        }
+        mRamUsageBarContainer.setVisibility(mConfiguration.mShowRambar ? View.VISIBLE : View.GONE);
+
+        mConfiguration.calcHorizontalDivider();
+
+        mFavoriteListHorizontal.setLayoutParams(getListParams());
+        mFavoriteListHorizontal.scrollTo(0);
+        mFavoriteListHorizontal.setDividerWidth(mConfiguration.mHorizontalDividerWidth);
+        mFavoriteListHorizontal.setPadding(mConfiguration.mHorizontalDividerWidth / 2, 0, mConfiguration.mHorizontalDividerWidth / 2, 0);
+
+        mRecentListHorizontal.setLayoutParams(getRecentsListParams());
+        mRecentListHorizontal.scrollTo(0);
+        mRecentListHorizontal.setDividerWidth(mConfiguration.mHorizontalDividerWidth);
+        mRecentListHorizontal.setPadding(mConfiguration.mHorizontalDividerWidth / 2, 0, mConfiguration.mHorizontalDividerWidth / 2, 0);
+
+        mNoRecentApps.setLayoutParams(getListParams());
+        // TODO
+        mAppDrawer.setColumnWidth(mConfiguration.mMaxWidth);
+        mAppDrawer.setLayoutParams(getAppDrawerParams());
+        mAppDrawer.requestLayout();
+        mAppDrawer.setScaleX(0f);
+        mRecents.setScaleX(1f);
+        mRecents.setVisibility(View.VISIBLE);
+        mShowAppDrawer = false;
+        mAppDrawer.setVisibility(View.GONE);
+        mAppDrawer.setSelection(0);
+
+        mView.setScaleX(1f);
 
         mOpenFavorite.setVisibility(mHasFavorites ? View.VISIBLE : View.GONE);
         if (!mHasFavorites){
             mShowFavorites = false;
         }
-        mOpenFavorite.setImageDrawable(mContext.getResources().getDrawable(
-                mShowFavorites ? R.drawable.arrow_up : R.drawable.arrow_down));
+        mOpenFavorite.setImageDrawable(mShowFavorites ? mFavoriteDrawableDefault[0] : mFavoriteDrawableDefault[1]);
         mFavoriteListHorizontal.setVisibility(mShowFavorites ? View.VISIBLE : View.GONE);
 
         if(mHasFavorites && !mShowcaseDone){
@@ -599,33 +622,20 @@ public class SwitchLayout implements OnShowcaseEventListener {
                 }
             });
         }
-        
-        // update visibility
-        mKillAllButton.setVisibility(mButtons[SettingsActivity.BUTTON_KILL_ALL] ? View.VISIBLE : View.GONE);
-        mKillOtherButton.setVisibility(mButtons[SettingsActivity.BUTTON_KILL_OTHER] ? View.VISIBLE : View.GONE);
-        mLastAppButton.setVisibility(mButtons[SettingsActivity.BUTTON_TOGGLE_APP] ? View.VISIBLE : View.GONE);
-        mHomeButton.setVisibility(mButtons[SettingsActivity.BUTTON_HOME] ? View.VISIBLE : View.GONE);
-        mSettingsButton.setVisibility(mButtons[SettingsActivity.BUTTON_SETTINGS] ? View.VISIBLE : View.GONE);
 
+        buildButtons();
         // reset any glow images
-        mSettingsButton.setImageDrawable(mSettingsButton.getOriginalImage());
-        mKillAllButton.setImageDrawable(mKillAllButton.getOriginalImage());
-        mKillOtherButton.setImageDrawable(mKillOtherButton.getOriginalImage());
-        mLastAppButton.setImageDrawable(mLastAppButton.getOriginalImage());
-        mHomeButton.setImageDrawable(mHomeButton.getOriginalImage());
+        resetButtonGlow();
 
         mButtonsVisible = isButtonVisible();
+
+        mVirtualBackKey = false;
     }
 
     private boolean isButtonVisible(){
-        for(int i= 0; i < mButtons.length; i++){
-            if(mButtons[i]){
-                return true;
-            }
-        }
-        return false;
+        return mButtonListItems.getChildCount() != 0;
     }
-    
+
     public synchronized void show() {
         if (mShowing) {
             return;
@@ -637,229 +647,228 @@ public class SwitchLayout implements OnShowcaseEventListener {
         
         initView();
 
-        mPopupView.getBackground().setAlpha(0);
+        if(DEBUG){
+            Log.d(TAG, "show " + System.currentTimeMillis());
+        }
 
         try {
-            mWindowManager.addView(mPopupView, getParams());
-        } catch(java.lang.IllegalStateException e){
+            mWindowManager.addView(mPopupView, getParams(mConfiguration.mBackgroundOpacity));
+        } catch(Exception e){
             // something went wrong - try to recover here
             mWindowManager.removeView(mPopupView);
-            mPopupView.removeAllViews();
-            mWindowManager.addView(mPopupView, getParams());
+            mWindowManager.addView(mPopupView, getParams(mConfiguration.mBackgroundOpacity));
         }
         
-        mPopupView.addView(mView);
 
         if (mConfiguration.mAnimate) {
-            mView.startAnimation(getShowAnimation());
+            toggleOverlay(true);
         } else {
             showDone();
-        }
-        if(mHasFavorites && !mShowcaseDone){
-            mPopupView.postDelayed(new Runnable(){
-                @Override
-                public void run() {
-                    startShowcaseFavorite();
-                }}, 200);
         }
     }
 
     private synchronized void showDone(){
-        mPopupView.getBackground().setAlpha((int) (255 * mConfiguration.mBackgroundOpacity));
+        if(DEBUG){
+            Log.d(TAG, "showDone " + System.currentTimeMillis());
+        }
         mPopupView.setFocusableInTouchMode(true);
+        mHandler.post(updateRamBarTask);
+        updateRecentsAppsList(false);
+
         mShowing = true;
-        Intent intent = new Intent(
-                SwitchService.RecentsReceiver.ACTION_OVERLAY_SHOWN);
-        mContext.sendBroadcast(intent);
-        updateNoRecentsApps();
-    }
+        mRecentsManager.getSwitchGestureView().overlayShown();
 
-    private Animation getShowAnimation() {
-        int animId = R.anim.slide_right_in;
-
-        if (mConfiguration.mLocation == 1) {
-            animId = R.anim.slide_left_in;
+        if(mHasFavorites && !mShowcaseDone){
+            mPopupView.post(new Runnable(){
+                @Override
+                public void run() {
+                    startShowcaseFavorite();
+                }});
         }
-        Animation animation = AnimationUtils.loadAnimation(mContext, animId);
-        animation.setAnimationListener(new Animation.AnimationListener() {
-            @Override
-            public void onAnimationEnd(Animation animation) {
-                showDone();
-            }
-
-            @Override
-            public void onAnimationStart(Animation animation) {
-            }
-
-            @Override
-            public void onAnimationRepeat(Animation animation) {
-            }
-        });
-        return animation;
     }
 
-    private Animation getHideAnimation() {
-        int animId = R.anim.slide_right_out;
-
-        if (mConfiguration.mLocation == 1) {
-            animId = R.anim.slide_left_out;
+    private synchronized void hideDone() {
+        if(DEBUG){
+            Log.d(TAG, "hideDone " + System.currentTimeMillis());
         }
 
-        Animation animation = AnimationUtils.loadAnimation(mContext, animId);
-        animation.setAnimationListener(new Animation.AnimationListener() {
-            @Override
-            public void onAnimationEnd(Animation animation) {
-                // to avoid the "Attempting to destroy the window while drawing"
-                // error
-                mPopupView.post(new Runnable() {
-                    @Override
-                    public void run() {
-                        hideDone();
-                    }
-                });
-            }
+        try {
+            mWindowManager.removeView(mPopupView);
+        } catch(Exception e){
+            // ignored
+        }
 
-            @Override
-            public void onAnimationStart(Animation animation) {
-            }
-
-            @Override
-            public void onAnimationRepeat(Animation animation) {
-            }
-        });
-        return animation;
-    }
-
-    private Animation getShowFavoriteAnimation() {
-        int animId = R.anim.slide_down;
-        Animation animation = AnimationUtils.loadAnimation(mContext, animId);
-        animation.setAnimationListener(new Animation.AnimationListener() {
-            @Override
-            public void onAnimationEnd(Animation animation) {
-                setButtonGlow(mOpenFavorite,
-                        mShowFavorites ? 0 : 1,
-                        false);
-            }
-
-            @Override
-            public void onAnimationStart(Animation animation) {
-                mFavoriteListHorizontal.setVisibility(View.VISIBLE);
-            }
-
-            @Override
-            public void onAnimationRepeat(Animation animation) {
-            }
-        });
-        return animation;
-    }
-
-    private Animation getHideFavoriteAnimation() {
-        int animId = R.anim.slide_up;
-        Animation animation = AnimationUtils.loadAnimation(mContext, animId);
-        animation.setAnimationListener(new Animation.AnimationListener() {
-            @Override
-            public void onAnimationEnd(Animation animation) {
-                setButtonGlow(mOpenFavorite,
-                        mShowFavorites ? 0 : 1,
-                        false);
-
-                mFavoriteListHorizontal.setVisibility(View.GONE);
-            }
-
-            @Override
-            public void onAnimationStart(Animation animation) {
-            }
-
-            @Override
-            public void onAnimationRepeat(Animation animation) {
-            }
-        });
-        return animation;
-    }
-
-    private void hideDone() {
-        mWindowManager.removeView(mPopupView);
-        mPopupView.removeAllViews();
-        mShowing = false;
-        
         // reset
         mNoRecentApps.setVisibility(View.GONE);
         mRecentListHorizontal.setVisibility(View.VISIBLE);
         mTaskLoadDone = false;
         mUpdateNoRecentsTasksDone = false;
+        mLoadedTasks.clear();
+        mRecentListAdapter.notifyDataSetChanged();
+        mAppDrawer.scrollTo(0, 0);
 
-        Intent intent = new Intent(
-                SwitchService.RecentsReceiver.ACTION_OVERLAY_HIDDEN);
-        mContext.sendBroadcast(intent);
+        mRecentsManager.getSwitchGestureView().overlayHidden();
+
+        // run back trigger if required
+        if(mVirtualBackKey && !mConfiguration.mRestrictedMode){
+            Utils.triggerVirtualKeypress(mHandler, KeyEvent.KEYCODE_BACK);
+        }
     }
 
     public synchronized void hide() {
         if (!mShowing) {
             return;
         }
-        
+
+        // to prevent any reentering
+        mShowing = false;
+
         if (mPopup != null) {
             mPopup.dismiss();
         }
 
-        mPopupView.getBackground().setAlpha(0);
+        try {
+            if (mConfiguration.mDimBehind){
+                // TODO workaround for flicker on launcher screen
+                mWindowManager.updateViewLayout(mPopupView, getParams(0));
+            }
+        } catch(Exception e){
+            // ignored
+        }
+
         if (mConfiguration.mAnimate) {
-            mView.startAnimation(getHideAnimation());
+            toggleOverlay(false);
         } else {
             hideDone();
         }
     }
 
-    private LinearLayout.LayoutParams getListviewParams(){
+    private LinearLayout.LayoutParams getRecentsListParams(){
         return new LinearLayout.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
-            mConfiguration.mHorizontalScrollerHeight);
+            mConfiguration.mMaxHeight);
     }
 
-    private WindowManager.LayoutParams getParams() {
+    private LinearLayout.LayoutParams getListParams(){
+        return new LinearLayout.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            mConfiguration.mMaxHeight);
+    }
+
+    private LinearLayout.LayoutParams getListItemParams(){
+        return new LinearLayout.LayoutParams(
+                mConfiguration.mMaxWidth,
+                mConfiguration.mMaxHeight);
+    }
+
+    private AbsListView.LayoutParams getAppDrawerItemParams(){
+        return new AbsListView.LayoutParams(
+                mConfiguration.mMaxWidth,
+                mConfiguration.mMaxHeight);
+    }
+
+    // TODO dont use real icon size values in code
+    private int getAppDrawerLines(){
+        if (mConfiguration.mIconSize == 40){
+            return 5;
+        }
+        if (mConfiguration.mIconSize == 60){
+            return 4;
+        }
+        return 3;
+    }
+
+    private RelativeLayout.LayoutParams getAppDrawerParams(){
+        return new RelativeLayout.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            getAppDrawerLines() * mConfiguration.mMaxHeight);
+    }
+
+    private WindowManager.LayoutParams getParams(float dimAmount) {
         WindowManager.LayoutParams params = new WindowManager.LayoutParams(
-                mConfiguration.getCurrentOverlayWidth() - mConfiguration.mHorizontalMargin,
+                mConfiguration.getCurrentOverlayWidth(),
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.TYPE_PHONE,
-                0,
+                mConfiguration.mDimBehind ? WindowManager.LayoutParams.FLAG_DIM_BEHIND : 0,
                 PixelFormat.TRANSLUCENT);
-        params.gravity = Gravity.TOP | Gravity.CENTER;
+
+        if (mConfiguration.mDimBehind){
+            params.dimAmount = dimAmount;
+        }
+
+        params.gravity = Gravity.TOP | getHorizontalGravity();
         params.y = mConfiguration.getCurrentOffsetStart() 
-                + mConfiguration.mHandleHeight / 2 
-                - mConfiguration.mHorizontalScrollerHeight / 2 
-                - (mButtonsVisible ? mConfiguration.mHorizontalMaxWidth : 0);
+                + mConfiguration.mDragHandleHeight / 2
+                - mConfiguration.mMaxHeight / 2
+                - (mButtonsVisible ? mConfiguration.mMaxHeight : 0);
 
         return params;
     }
 
-    public void update(List<TaskDescription> taskList, boolean show) {
-        if(DEBUG){
-            Log.d(TAG, "update");
-        }
-        mLoadedTasks.clear();
-        mLoadedTasks.addAll(taskList);
-        mRecentListAdapter.notifyDataSetChanged();
-
-        if(show){
-            if (mRamUsageBar != null && mConfiguration.mShowRambar) {
-                mHandler.post(updateRamBarTask);
+    private int getHorizontalGravity(){
+        if (mConfiguration.mGravity == 0){
+            return Gravity.CENTER_HORIZONTAL;
+        } else {
+            if (mConfiguration.mLocation == 0){
+                return Gravity.RIGHT;
+            } else {
+                return Gravity.LEFT;
             }
-            mTaskLoadDone = true;
-            updateNoRecentsApps();
         }
     }
 
-    private void handleLongPress(final TaskDescription ad, View view) {
+    public synchronized void update(List<TaskDescription> taskList) {
+        if(isHandleRecentsUpdate()){
+            if(DEBUG){
+                Log.d(TAG, "update " + System.currentTimeMillis() + " " + taskList);
+            }
+            mLoadedTasks.clear();
+            mLoadedTasks.addAll(taskList);
+
+            mTaskLoadDone = true;
+            updateRecentsAppsList(true);
+        }
+    }
+
+    public void refresh(List<TaskDescription> taskList) {
+        if(DEBUG){
+            Log.d(TAG, "refresh");
+        }
+        mLoadedTasks.clear();
+        mLoadedTasks.addAll(taskList);
+
+        mTaskLoadDone = true;
+        updateRecentsAppsList(true);
+    }
+
+    private void handleLongPressRecent(final TaskDescription ad, View view) {
         final PopupMenu popup = new PopupMenu(mContext, view);
         mPopup = popup;
         popup.getMenuInflater().inflate(R.menu.recent_popup_menu,
                 popup.getMenu());
+        popup.getMenu().findItem(R.id.recent_add_favorite).setEnabled(!mFavoriteList.contains(ad.getIntent().toUri(0)));
         popup.setOnMenuItemClickListener(new PopupMenu.OnMenuItemClickListener() {
             public boolean onMenuItemClick(MenuItem item) {
                 if (item.getItemId() == R.id.recent_remove_item) {
                     mRecentsManager.killTask(ad);
                 } else if (item.getItemId() == R.id.recent_inspect_item) {
-                    startApplicationDetailsActivity(ad.getPackageName());
+                    mRecentsManager.startApplicationDetailsActivity(ad.getPackageName());
+                } else if (item.getItemId() == R.id.recent_add_favorite) {
+                    Intent intent = ad.getIntent();
+                    String intentStr = intent.toUri(0);
+                    PackageManager.PackageItem packageItem =
+                            PackageManager.getInstance(mContext).getPackageItem(intentStr);
+                    if (packageItem == null){
+                        // find a matching available package by matching thing like
+                        // package name
+                        packageItem = PackageManager.getInstance(mContext).getPackageItemByComponent(intent);
+                        if (packageItem == null){
+                            Log.d(TAG, "failed to add " + intentStr);
+                            return false;
+                        }
+                        intentStr = packageItem.getIntent();
+                    }
+                    Utils.addToFavorites(mContext, intentStr, mFavoriteList);
                 } else {
                     return false;
                 }
@@ -874,21 +883,56 @@ public class SwitchLayout implements OnShowcaseEventListener {
         popup.show();
     }
 
-    private void startApplicationDetailsActivity(String packageName) {
-        Intent hideRecent = new Intent(
-                SwitchService.RecentsReceiver.ACTION_HIDE_OVERLAY);
-        mContext.sendBroadcast(hideRecent);
-
-        Intent intent = new Intent(
-                Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts(
-                        "package", packageName, null));
-        intent.setComponent(intent.resolveActivity(mContext.getPackageManager()));
-        TaskStackBuilder.create(mContext)
-                .addNextIntentWithParentStack(intent).startActivities();
+    private void handleLongPressFavorite(final PackageManager.PackageItem packageItem, View view) {
+        final PopupMenu popup = new PopupMenu(mContext, view);
+        mPopup = popup;
+        popup.getMenuInflater().inflate(R.menu.favorite_popup_menu,
+                popup.getMenu());
+        popup.setOnMenuItemClickListener(new PopupMenu.OnMenuItemClickListener() {
+            public boolean onMenuItemClick(MenuItem item) {
+                if (item.getItemId() == R.id.package_inspect_item) {
+                    mRecentsManager.startApplicationDetailsActivity(packageItem.getActivityInfo().packageName);
+                } else if (item.getItemId() == R.id.recent_remove_favorite) {
+                    Utils.removeFromFavorites(mContext, packageItem.getIntent(), mFavoriteList);
+                } else {
+                    return false;
+                }
+                return true;
+            }
+        });
+        popup.setOnDismissListener(new PopupMenu.OnDismissListener() {
+            public void onDismiss(PopupMenu menu) {
+                mPopup = null;
+            }
+        });
+        popup.show();
     }
 
-    public void handleSwipe(TaskDescription ad) {
-        mRecentsManager.killTask(ad);
+    private void handleLongPressAppDrawer(final PackageManager.PackageItem packageItem, View view) {
+        final PopupMenu popup = new PopupMenu(mContext, view);
+        mPopup = popup;
+        popup.getMenuInflater().inflate(R.menu.package_popup_menu,
+                popup.getMenu());
+        popup.getMenu().findItem(R.id.recent_add_favorite).setEnabled(!mFavoriteList.contains(packageItem.getIntent()));
+        popup.setOnMenuItemClickListener(new PopupMenu.OnMenuItemClickListener() {
+            public boolean onMenuItemClick(MenuItem item) {
+                if (item.getItemId() == R.id.package_inspect_item) {
+                    mRecentsManager.startApplicationDetailsActivity(packageItem.getActivityInfo().packageName);
+                } else if (item.getItemId() == R.id.recent_add_favorite) {
+                    Log.d(TAG, "add " + packageItem.getIntent());
+                    Utils.addToFavorites(mContext, packageItem.getIntent(), mFavoriteList);
+                } else {
+                    return false;
+                }
+                return true;
+            }
+        });
+        popup.setOnDismissListener(new PopupMenu.OnDismissListener() {
+            public void onDismiss(PopupMenu menu) {
+                mPopup = null;
+            }
+        });
+        popup.show();
     }
 
     public void updatePrefs(SharedPreferences prefs, String key) {
@@ -899,11 +943,43 @@ public class SwitchLayout implements OnShowcaseEventListener {
         String favoriteListString = prefs.getString(SettingsActivity.PREF_FAVORITE_APPS, "");
         Utils.parseFavorites(favoriteListString, mFavoriteList);
 
+        List<String> favoriteList = new ArrayList<String>();
+        favoriteList.addAll(mFavoriteList);
+        Iterator<String> nextFavorite = favoriteList.iterator();
+        while(nextFavorite.hasNext()){
+            String intent = nextFavorite.next();
+            PackageManager.PackageItem packageItem = PackageManager.getInstance(mContext).getPackageItem(intent);
+            if (packageItem == null){
+                Log.d(TAG, "failed to add " + intent);
+                mFavoriteList.remove(intent);
+                continue;
+            }
+        }
         mHasFavorites = mFavoriteList.size() != 0;
-        updateFavorites();
         mFavoriteListAdapter.notifyDataSetChanged();
+        if (mFavoriteListHorizontal != null){
+            mFavoriteListHorizontal.setAdapter(mFavoriteListAdapter);
+        }
+        mRecentListAdapter.notifyDataSetChanged();
+        if (mRecentListHorizontal != null) {
+            mRecentListHorizontal.setAdapter(mRecentListAdapter);
+        }
+        mAppDrawerListAdapter.notifyDataSetChanged();
+        if (mAppDrawer != null) {
+            mAppDrawer.setAdapter(mAppDrawerListAdapter);
+        }
+        buildButtonList();
 
-        mButtons = Utils.buttonStringToArry(prefs.getString(SettingsActivity.PREF_BUTTONS, SettingsActivity.PREF_BUTTON_DEFAULT));
+        if (!mHasFavorites){
+            mShowFavorites = false;
+        }
+        if (mOpenFavorite != null){
+            mOpenFavorite.setVisibility(mHasFavorites ? View.VISIBLE : View.GONE);
+            mOpenFavorite.setImageDrawable(mShowFavorites ? mFavoriteDrawableDefault[0] : mFavoriteDrawableDefault[1]);
+        }
+        if (mFavoriteListHorizontal != null){
+            mFavoriteListHorizontal.setVisibility(mShowFavorites ? View.VISIBLE : View.GONE);
+        }
     }
 
     private final Runnable updateRamBarTask = new Runnable() {
@@ -934,48 +1010,6 @@ public class SwitchLayout implements OnShowcaseEventListener {
         }
     };
 
-    private Drawable getDefaultActivityIcon() {
-        return mContext.getResources().getDrawable(R.drawable.ic_default);
-    }
-
-    private void updateFavorites() {
-        final PackageManager pm = mContext.getPackageManager();
-        List<String> validFavorites = new ArrayList<String>();
-        mFavoriteIcons = new ArrayList<Drawable>();
-        mFavoriteNames = new ArrayList<String>();
-        Iterator<String> nextFavorite = mFavoriteList.iterator();
-        while (nextFavorite.hasNext()) {
-            String favorite = nextFavorite.next();
-            Intent intent = null;
-            Drawable appIcon = null;
-            try {
-                intent = Intent.parseUri(favorite, 0);
-                appIcon = pm.getActivityIcon(intent);
-            } catch (NameNotFoundException e) {
-                Log.e(TAG, "NameNotFoundException: [" + favorite + "]");
-                continue;
-            } catch (URISyntaxException e) {
-                Log.e(TAG, "URISyntaxException: [" + favorite + "]");
-                continue;
-            }
-            validFavorites.add(favorite);
-            String label = Utils.getActivityLabel(pm, intent);
-            if (label == null) {
-                label = favorite;
-            }
-            if (appIcon == null) {
-                appIcon = getDefaultActivityIcon();
-            }
-            mFavoriteIcons.add(Utils.resize(mContext.getResources(),
-                    appIcon, mConfiguration.mIconSize, 
-                    mConfiguration.mIconBorder,
-                    mConfiguration.mDensity));
-            mFavoriteNames.add(label);
-        }
-        mFavoriteList.clear();
-        mFavoriteList.addAll(validFavorites);
-    }
-    
     public boolean isShowing() {
         return mShowing;
     }
@@ -992,8 +1026,6 @@ public class SwitchLayout implements OnShowcaseEventListener {
             mShowcaseView = ShowcaseView.insertShowcaseView(size.x / 2, mOpenFavoriteY, mWindowManager, mContext,
                     R.string.sc_favorite_title, R.string.sc_favorite_body, co);
 
-            mShowcaseView.animateGesture(size.x / 2, size.y * 2.0f / 3.0f,
-                    size.x / 2, size.y / 2.0f);
             mShowcaseView.setOnShowcaseEventListener(this);
             mShowcaseDone = true;
             return true;
@@ -1010,8 +1042,27 @@ public class SwitchLayout implements OnShowcaseEventListener {
     }
     
     public void updateLayout() {
-        if (mShowing){
-            mWindowManager.updateViewLayout(mPopupView, getParams());
+        try {
+            if (mShowing){
+                mConfiguration.calcHorizontalDivider();
+
+                mFavoriteListHorizontal.setDividerWidth(mConfiguration.mHorizontalDividerWidth);
+                mFavoriteListHorizontal.setPadding(mConfiguration.mHorizontalDividerWidth / 2, 0, mConfiguration.mHorizontalDividerWidth / 2, 0);
+
+                mRecentListHorizontal.setDividerWidth(mConfiguration.mHorizontalDividerWidth);
+                mRecentListHorizontal.setPadding(mConfiguration.mHorizontalDividerWidth / 2, 0, mConfiguration.mHorizontalDividerWidth / 2, 0);
+
+                mFavoriteListAdapter.notifyDataSetChanged();
+                mFavoriteListHorizontal.setAdapter(mFavoriteListAdapter);
+
+                mRecentListAdapter.notifyDataSetChanged();
+                mRecentListHorizontal.setAdapter(mRecentListAdapter);
+
+                mWindowManager.updateViewLayout(mPopupView, getParams(mConfiguration.mBackgroundOpacity));
+                mAppDrawer.requestLayout();
+            }
+        } catch(Exception e){
+            // ignored
         }
     }
     
@@ -1028,6 +1079,623 @@ public class SwitchLayout implements OnShowcaseEventListener {
             } else {
                 button.setImageDrawable(mFavoriteDrawableDefault[1]);
             }
+        }
+    }
+
+    private void toggleAppdrawer() {
+        mShowAppDrawer = !mShowAppDrawer;
+        if (mShowAppDrawer){
+            flipToAppDrawer();
+        } else {
+            flipToRecents();
+        }
+    }
+
+    private PackageTextView getRecentItemTemplate() {
+        PackageTextView item = new PackageTextView(mContext);
+        if (mConfiguration.mFlatStyle){
+            item.setTextColor(Color.BLACK);
+            item.setShadowLayer(0, 0, 0, Color.BLACK);
+        } else {
+            item.setTextColor(Color.WHITE);
+            item.setShadowLayer(5, 0, 0, Color.BLACK);
+        }
+        item.setEllipsize(TextUtils.TruncateAt.END);
+        item.setGravity(Gravity.CENTER_HORIZONTAL|Gravity.BOTTOM);
+        item.setLayoutParams(getListItemParams());
+        item.setMaxLines(1);
+        return item;
+    }
+
+    private PackageTextView getFavoriteItemTemplate() {
+        PackageTextView item = new PackageTextView(mContext);
+        if (mConfiguration.mFlatStyle){
+            item.setTextColor(Color.BLACK);
+            item.setShadowLayer(0, 0, 0, Color.BLACK);
+        } else {
+            item.setTextColor(Color.WHITE);
+            item.setShadowLayer(5, 0, 0, Color.BLACK);
+        }
+        item.setEllipsize(TextUtils.TruncateAt.END);
+        item.setGravity(Gravity.CENTER_HORIZONTAL|Gravity.BOTTOM);
+        item.setLayoutParams(getListItemParams());
+        item.setMaxLines(1);
+        return item;
+    }
+
+    private PackageTextView getAppDrawerItemTemplate() {
+        PackageTextView item = new PackageTextView(mContext);
+        if (mConfiguration.mFlatStyle){
+            item.setTextColor(Color.BLACK);
+            item.setShadowLayer(0, 0, 0, Color.BLACK);
+        } else {
+            item.setTextColor(Color.WHITE);
+            item.setShadowLayer(5, 0, 0, Color.BLACK);
+        }
+        item.setEllipsize(TextUtils.TruncateAt.END);
+        item.setGravity(Gravity.CENTER_HORIZONTAL|Gravity.BOTTOM);
+        item.setLayoutParams(getAppDrawerItemParams());
+        item.setMaxLines(1);
+        return item;
+    }
+
+    private PackageTextView getPackageItemActionTemplate() {
+        PackageTextView item = new PackageTextView(mContext);
+        item.setGravity(Gravity.CENTER_VERTICAL);
+        return item;
+    }
+
+    private void flipToAppDrawer() {
+        if (mRecentsAnim != null){
+            mRecentsAnim.cancel();
+        }
+        if (mAppDrawerAnim != null){
+            mAppDrawerAnim.cancel();
+        }
+        mAppDrawer.setVisibility(View.VISIBLE);
+        mAppDrawer.setScaleX(0f);
+        mRecents.setScaleX(1f);
+
+        mAppDrawerAnim = start(startDelay(
+                FLIP_DURATION_OUT,
+                interpolator(mDecelerateInterpolator,
+                        ObjectAnimator.ofFloat(mAppDrawer, View.SCALE_X, 1f)
+                                .setDuration(FLIP_DURATION_IN))));
+        mRecentsAnim = start(setVisibilityWhenDone(
+                interpolator(mAccelerateInterpolator,
+                        ObjectAnimator.ofFloat(mRecents, View.SCALE_X, 0f))
+                        .setDuration(FLIP_DURATION_OUT), mRecents, View.GONE));
+    }
+
+    private void flipToRecents() {
+        if (mRecentsAnim != null){
+            mRecentsAnim.cancel();
+        }
+        if (mAppDrawerAnim != null){
+            mAppDrawerAnim.cancel();
+        }
+        mRecents.setVisibility(View.VISIBLE);
+        mRecents.setScaleX(0f);
+        mAppDrawer.setScaleX(1f);
+
+        mRecentsAnim = start(startDelay(
+                FLIP_DURATION_OUT,
+                interpolator(mDecelerateInterpolator,
+                        ObjectAnimator.ofFloat(mRecents, View.SCALE_X, 1f)
+                                .setDuration(FLIP_DURATION_IN))));
+        mAppDrawerAnim = start(setVisibilityWhenDone(
+                interpolator(mAccelerateInterpolator,
+                        ObjectAnimator.ofFloat(mAppDrawer, View.SCALE_X, 0f))
+                        .setDuration(FLIP_DURATION_OUT), mAppDrawer, View.GONE));
+    }
+
+//    private void partialFlip(float progress) {
+//        if (mRecentsAnim != null){
+//            mRecentsAnim.cancel();
+//        }
+//        if (mAppDrawerAnim != null){
+//            mAppDrawerAnim.cancel();
+//        }
+//
+//        progress = Math.min(Math.max(progress, -1f), 1f);
+//        if (progress < 0f) { // recents side
+//            mAppDrawer.setVisibility(View.GONE);
+//            mAppDrawer.setScaleX(0f);
+//            mRecents.setScaleX(-progress);
+//            mRecents.setVisibility(View.VISIBLE);
+//        } else { // app drawer side
+//            mRecents.setVisibility(View.GONE);
+//            mRecents.setScaleX(0f);
+//            mAppDrawer.setScaleX(progress);
+//            mAppDrawer.setVisibility(View.VISIBLE);
+//        }
+//    }
+
+    private void toggleFavorites() {
+        mShowFavorites = !mShowFavorites;
+
+        if (mShowFavAnim != null){
+            mShowFavAnim.cancel();
+        }
+
+        if (mShowFavorites){
+            mFavoriteListHorizontal.setVisibility(View.VISIBLE);
+            mFavoriteListHorizontal.setScaleY(0f);
+            mFavoriteListHorizontal.setPivotY(0f);
+            mShowFavAnim = start(interpolator(mLinearInterpolator,
+                            ObjectAnimator.ofFloat(mFavoriteListHorizontal, View.SCALE_Y, 0f, 1f))
+                            .setDuration(FLIP_DURATION_DEFAULT));
+        } else {
+            mFavoriteListHorizontal.setScaleY(1f);
+            mFavoriteListHorizontal.setPivotY(0f);
+            mShowFavAnim = start(setVisibilityWhenDone(
+                    interpolator(mLinearInterpolator,
+                            ObjectAnimator.ofFloat(mFavoriteListHorizontal, View.SCALE_Y, 1f, 0f))
+                            .setDuration(FLIP_DURATION_DEFAULT), mFavoriteListHorizontal, View.GONE));
+        }
+
+        mShowFavAnim.addListener(new AnimatorListener() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                setButtonGlow(mOpenFavorite,
+                        mShowFavorites ? 0 : 1,
+                        false);
+            }
+            @Override
+            public void onAnimationStart(Animator animation) {
+            }
+            @Override
+            public void onAnimationCancel(Animator animation) {
+            }
+            @Override
+            public void onAnimationRepeat(Animator animation) {
+            }
+        });
+    }
+
+    private void toggleOverlay(final boolean show) {
+        if (mToggleOverlayAnim != null){
+            mToggleOverlayAnim.cancel();
+        }
+
+        if (mConfiguration.mLocation == 0) {
+            mView.setPivotX(mConfiguration.getCurrentOverlayWidth());
+        } else {
+            mView.setPivotX(0f);
+        }
+
+        if (show){
+            mView.setScaleX(0f);
+            mToggleOverlayAnim = start(interpolator(mLinearInterpolator,
+                            ObjectAnimator.ofFloat(mView, View.SCALE_X, 0f, 1f))
+                            .setDuration(SHOW_DURATION));
+        } else {
+            mView.setScaleX(1f);
+            mToggleOverlayAnim = start(interpolator(mLinearInterpolator,
+                            ObjectAnimator.ofFloat(mView, View.SCALE_X, 1f, 0f))
+                            .setDuration(HIDE_DURATION));
+        }
+
+        mToggleOverlayAnim.addListener(new AnimatorListener() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                if (!show){
+                    // to avoid the "Attempting to destroy the window while drawing"
+                    // error
+                    mPopupView.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            hideDone();
+                        }
+                    });
+                } else {
+                    showDone();
+                }
+            }
+            @Override
+            public void onAnimationStart(Animator animation) {
+            }
+            @Override
+            public void onAnimationCancel(Animator animation) {
+            }
+            @Override
+            public void onAnimationRepeat(Animator animation) {
+            }
+        });
+    }
+
+    private Animator setVisibilityWhenDone(
+            final Animator a, final View v, final int vis) {
+        a.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                v.setVisibility(vis);
+            }
+        });
+        return a;
+    }
+
+    private Animator interpolator(TimeInterpolator ti, Animator a) {
+        a.setInterpolator(ti);
+        return a;
+    }
+
+    private Animator startDelay(int d, Animator a) {
+        a.setStartDelay(d);
+        return a;
+    }
+
+    private Animator start(Animator a) {
+        a.start();
+        return a;
+    }
+
+    public void shutdownService() {
+        // remember on reboot
+        mPrefs.edit().putBoolean(SettingsActivity.PREF_SHOW_FAVORITE, mShowFavorites).commit();
+    }
+
+    private PackageTextView getActionButton(int buttonId) {
+        if (buttonId == SettingsActivity.BUTTON_HOME){
+            mHomeButton = getPackageItemActionTemplate();
+            if (mConfiguration.mFlatStyle) {
+//                mHomeButton.setOriginalImage(BitmapUtils.colorize(mContext.getResources(), Color.BLACK, mContext.getResources().getDrawable(R.drawable.home)));
+                mHomeButton.setOriginalImage(mContext.getResources().getDrawable(R.drawable.home));
+            } else {
+                mHomeButton.setOriginalImage(BitmapUtils.shadow(mContext.getResources(), mContext.getResources().getDrawable(R.drawable.home)));
+            }
+            mHomeButton.setGlowImage(BitmapUtils.glow(mContext.getResources(),
+                    mConfiguration.mGlowColor,
+                    mContext.getResources().getDrawable(R.drawable.home)));
+            mHomeButton.setOnTouchListener(new View.OnTouchListener(){
+                @Override
+                public boolean onTouch(View v, MotionEvent event) {
+                    if(event.getAction()==MotionEvent.ACTION_DOWN){
+                        mHomeButton.setBackground(mHomeButton.getGlowImage());
+                    } else if(event.getAction()==MotionEvent.ACTION_UP){
+                        mHomeButton.setBackground(mHomeButton.getOriginalImage());
+                    } else if(event.getAction()==MotionEvent.ACTION_CANCEL){
+                        mHomeButton.setBackground(mHomeButton.getOriginalImage());
+                    }
+                    v.onTouchEvent(event);
+                    return true;
+                }});
+            mHomeButton.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View v) {
+                    mRecentsManager.goHome(mAutoClose);
+                }
+            });
+            mHomeButton.setOnLongClickListener(new View.OnLongClickListener() {
+                @Override
+                public boolean onLongClick(View v) {
+                    Toast.makeText(mContext,
+                            mContext.getResources().getString(R.string.home_help), Toast.LENGTH_SHORT).show();
+                    return true;
+                }
+            });
+            return mHomeButton;
+        }
+
+        if (buttonId == SettingsActivity.BUTTON_TOGGLE_APP){
+            mLastAppButton = getPackageItemActionTemplate();
+            if (mConfiguration.mFlatStyle) {
+//                mLastAppButton.setOriginalImage(BitmapUtils.colorize(mContext.getResources(), Color.BLACK, mContext.getResources().getDrawable(R.drawable.lastapp)));
+                mLastAppButton.setOriginalImage(mContext.getResources().getDrawable(R.drawable.lastapp));
+            } else {
+                mLastAppButton.setOriginalImage(BitmapUtils.shadow(mContext.getResources(), mContext.getResources().getDrawable(R.drawable.lastapp)));
+            }
+            mLastAppButton.setGlowImage(BitmapUtils.glow(mContext.getResources(),
+                    mConfiguration.mGlowColor,
+                    mContext.getResources().getDrawable(R.drawable.lastapp)));
+            mLastAppButton.setOnTouchListener(new View.OnTouchListener(){
+                @Override
+                public boolean onTouch(View v, MotionEvent event) {
+                    if(event.getAction()==MotionEvent.ACTION_DOWN){
+                        mLastAppButton.setBackground(mLastAppButton.getGlowImage());
+                    } else if(event.getAction()==MotionEvent.ACTION_UP){
+                        mLastAppButton.setBackground(mLastAppButton.getOriginalImage());
+                    } else if(event.getAction()==MotionEvent.ACTION_CANCEL){
+                        mLastAppButton.setBackground(mLastAppButton.getOriginalImage());
+                    }
+                    v.onTouchEvent(event);
+                    return true;
+                }});
+
+            mLastAppButton.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View v) {
+                    mRecentsManager.toggleLastApp(mAutoClose);
+                }
+            });
+            mLastAppButton.setOnLongClickListener(new View.OnLongClickListener() {
+                @Override
+                public boolean onLongClick(View v) {
+                    Toast.makeText(mContext,
+                            mContext.getResources().getString(R.string.toogle_last_app_help), Toast.LENGTH_SHORT).show();
+                    return true;
+                }
+            });
+            return mLastAppButton;
+        }
+
+        if (buttonId == SettingsActivity.BUTTON_KILL_ALL){
+            mKillAllButton = getPackageItemActionTemplate();
+            if (mConfiguration.mFlatStyle) {
+//                mKillAllButton.setOriginalImage(BitmapUtils.colorize(mContext.getResources(), Color.BLACK, mContext.getResources().getDrawable(R.drawable.kill_all)));
+                mKillAllButton.setOriginalImage(mContext.getResources().getDrawable(R.drawable.kill_all));
+            } else {
+                mKillAllButton.setOriginalImage(BitmapUtils.shadow(mContext.getResources(), mContext.getResources().getDrawable(R.drawable.kill_all)));
+            }
+            mKillAllButton.setGlowImage(BitmapUtils.glow(mContext.getResources(),
+                    mConfiguration.mGlowColor,
+                    mContext.getResources().getDrawable(R.drawable.kill_all)));
+            mKillAllButton.setOnTouchListener(new View.OnTouchListener(){
+                @Override
+                public boolean onTouch(View v, MotionEvent event) {
+                    if(event.getAction()==MotionEvent.ACTION_DOWN){
+                        mKillAllButton.setBackground(mKillAllButton.getGlowImage());
+                    } else if(event.getAction()==MotionEvent.ACTION_UP){
+                        mKillAllButton.setBackground(mKillAllButton.getOriginalImage());
+                    } else if(event.getAction()==MotionEvent.ACTION_CANCEL){
+                        mKillAllButton.setBackground(mKillAllButton.getOriginalImage());
+                    }
+                    v.onTouchEvent(event);
+                    return true;
+                }});
+            mKillAllButton.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View v) {
+                    mRecentsManager.killAll(mAutoClose);
+                }
+            });
+
+            mKillAllButton.setOnLongClickListener(new View.OnLongClickListener() {
+                @Override
+                public boolean onLongClick(View v) {
+                    Toast.makeText(mContext,
+                            mContext.getResources().getString(R.string.kill_all_apps_help), Toast.LENGTH_SHORT).show();                return true;
+                }
+            });
+            return mKillAllButton;
+        }
+
+        if (buttonId == SettingsActivity.BUTTON_KILL_OTHER){
+            mKillOtherButton = getPackageItemActionTemplate();
+            if (mConfiguration.mFlatStyle) {
+//                mKillOtherButton.setOriginalImage(BitmapUtils.colorize(mContext.getResources(), Color.BLACK, mContext.getResources().getDrawable(R.drawable.kill_other)));
+                mKillOtherButton.setOriginalImage(mContext.getResources().getDrawable(R.drawable.kill_other));
+            } else {
+                mKillOtherButton.setOriginalImage(BitmapUtils.shadow(mContext.getResources(), mContext.getResources().getDrawable(R.drawable.kill_other)));
+            }
+            mKillOtherButton.setGlowImage(BitmapUtils.glow(mContext.getResources(),
+                    mConfiguration.mGlowColor,
+                    mContext.getResources().getDrawable(R.drawable.kill_other)));
+            mKillOtherButton.setOnTouchListener(new View.OnTouchListener(){
+                @Override
+                public boolean onTouch(View v, MotionEvent event) {
+                    if(event.getAction()==MotionEvent.ACTION_DOWN){
+                        mKillOtherButton.setBackground(mKillOtherButton.getGlowImage());
+                    } else if(event.getAction()==MotionEvent.ACTION_UP){
+                        mKillOtherButton.setBackground(mKillOtherButton.getOriginalImage());
+                    } else if(event.getAction()==MotionEvent.ACTION_CANCEL){
+                        mKillOtherButton.setBackground(mKillOtherButton.getOriginalImage());
+                    }
+                    v.onTouchEvent(event);
+                    return true;
+                }});
+
+            mKillOtherButton.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View v) {
+                    mRecentsManager.killOther(mAutoClose);
+                }
+            });
+            mKillOtherButton.setOnLongClickListener(new View.OnLongClickListener() {
+                @Override
+                public boolean onLongClick(View v) {
+                    Toast.makeText(mContext,
+                            mContext.getResources().getString(R.string.kill_other_apps_help), Toast.LENGTH_SHORT).show();
+                    return true;
+                }
+            });
+            return mKillOtherButton;
+        }
+
+        if (buttonId == SettingsActivity.BUTTON_SETTINGS){
+            mSettingsButton = getPackageItemActionTemplate();
+            if (mConfiguration.mFlatStyle) {
+//                mSettingsButton.setOriginalImage(BitmapUtils.colorize(mContext.getResources(), Color.BLACK, mContext.getResources().getDrawable(R.drawable.settings)));
+                mSettingsButton.setOriginalImage(mContext.getResources().getDrawable(R.drawable.settings));
+            } else {
+                mSettingsButton.setOriginalImage(BitmapUtils.shadow(mContext.getResources(), mContext.getResources().getDrawable(R.drawable.settings)));
+            }
+            mSettingsButton.setGlowImage(BitmapUtils.glow(mContext.getResources(),
+                    mConfiguration.mGlowColor,
+                    mContext.getResources().getDrawable(R.drawable.settings)));
+
+            mSettingsButton.setOnTouchListener(new View.OnTouchListener(){
+                @Override
+                public boolean onTouch(View v, MotionEvent event) {
+                    if(event.getAction()==MotionEvent.ACTION_DOWN){
+                        mSettingsButton.setBackground(mSettingsButton.getGlowImage());
+                    } else if(event.getAction()==MotionEvent.ACTION_UP){
+                        mSettingsButton.setBackground(mSettingsButton.getOriginalImage());
+                    } else if(event.getAction()==MotionEvent.ACTION_CANCEL){
+                        mSettingsButton.setBackground(mSettingsButton.getOriginalImage());
+                    }
+                    v.onTouchEvent(event);
+                    return true;
+                }});
+
+            mSettingsButton.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View v) {
+                    mRecentsManager.startSettingssActivity();
+                }
+            });
+            mSettingsButton.setOnLongClickListener(new View.OnLongClickListener() {
+                @Override
+                public boolean onLongClick(View v) {
+                    mRecentsManager.startOmniSwitchSettingsActivity();
+                    return true;
+                }
+            });
+            return mSettingsButton;
+        }
+
+        if (buttonId == SettingsActivity.BUTTON_ALLAPPS){
+            mAllappsButton = getPackageItemActionTemplate();
+            if (mConfiguration.mFlatStyle) {
+//                mAllappsButton.setOriginalImage(BitmapUtils.colorize(mContext.getResources(), Color.BLACK, mContext.getResources().getDrawable(R.drawable.ic_allapps)));
+                mAllappsButton.setOriginalImage(mContext.getResources().getDrawable(R.drawable.ic_allapps));
+            } else {
+                mAllappsButton.setOriginalImage(BitmapUtils.shadow(mContext.getResources(), mContext.getResources().getDrawable(R.drawable.ic_allapps)));
+            }
+            mAllappsButton.setGlowImage(BitmapUtils.glow(mContext.getResources(),
+                    mConfiguration.mGlowColor,
+                    mContext.getResources().getDrawable(R.drawable.ic_allapps)));
+
+            mAllappsButton.setOnTouchListener(new View.OnTouchListener(){
+                @Override
+                public boolean onTouch(View v, MotionEvent event) {
+                    if(event.getAction()==MotionEvent.ACTION_DOWN){
+                        mAllappsButton.setBackground(mAllappsButton.getGlowImage());
+                    } else if(event.getAction()==MotionEvent.ACTION_UP){
+                        mAllappsButton.setBackground(mAllappsButton.getOriginalImage());
+                    } else if(event.getAction()==MotionEvent.ACTION_CANCEL){
+                        mAllappsButton.setBackground(mAllappsButton.getOriginalImage());
+                    }
+                    v.onTouchEvent(event);
+                    return true;
+                }});
+
+            mAllappsButton.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View v) {
+                    toggleAppdrawer();
+                }
+            });
+            mAllappsButton.setOnLongClickListener(new View.OnLongClickListener() {
+                @Override
+                public boolean onLongClick(View v) {
+                    Toast.makeText(mContext,
+                            mContext.getResources().getString(R.string.allapps_help), Toast.LENGTH_SHORT).show();
+                    return true;
+                }
+            });
+            return mAllappsButton;
+        }
+
+        if (buttonId == SettingsActivity.BUTTON_BACK){
+            mBackButton = getPackageItemActionTemplate();
+            if (mConfiguration.mFlatStyle) {
+//                mBackButton.setOriginalImage(BitmapUtils.colorize(mContext.getResources(), Color.BLACK, mContext.getResources().getDrawable(R.drawable.back)));
+                mBackButton.setOriginalImage(mContext.getResources().getDrawable(R.drawable.back));
+            } else {
+                mBackButton.setOriginalImage(BitmapUtils.shadow(mContext.getResources(), mContext.getResources().getDrawable(R.drawable.back)));
+            }
+            mBackButton.setGlowImage(BitmapUtils.glow(mContext.getResources(),
+                    mConfiguration.mGlowColor,
+                    mContext.getResources().getDrawable(R.drawable.back)));
+
+            mBackButton.setOnTouchListener(new View.OnTouchListener(){
+                @Override
+                public boolean onTouch(View v, MotionEvent event) {
+                    if(event.getAction()==MotionEvent.ACTION_DOWN){
+                        mBackButton.setBackground(mBackButton.getGlowImage());
+                    } else if(event.getAction()==MotionEvent.ACTION_UP){
+                        mBackButton.setBackground(mBackButton.getOriginalImage());
+                    } else if(event.getAction()==MotionEvent.ACTION_CANCEL){
+                        mBackButton.setBackground(mBackButton.getOriginalImage());
+                    }
+                    v.onTouchEvent(event);
+                    return true;
+                }});
+
+            mBackButton.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View v) {
+                    mVirtualBackKey = true;
+                    mRecentsManager.close();
+                }
+            });
+            mBackButton.setOnLongClickListener(new View.OnLongClickListener() {
+                @Override
+                public boolean onLongClick(View v) {
+                    Toast.makeText(mContext,
+                            mContext.getResources().getString(R.string.back_help), Toast.LENGTH_SHORT).show();
+                    return true;
+                }
+            });
+            return mBackButton;
+        }
+        return null;
+    }
+
+    private void buildButtonList(){
+        mActionList.clear();
+        Iterator<Integer> nextKey = mConfiguration.mButtons.keySet().iterator();
+        while(nextKey.hasNext()){
+            Integer key = nextKey.next();
+            Boolean value = mConfiguration.mButtons.get(key);
+            if (value){
+                PackageTextView item = getActionButton(key);
+                if (item != null){
+                    mActionList.add(item);
+                }
+            }
+        }
+    }
+
+    private void buildButtons(){
+        mButtonListItems.removeAllViews();
+        int buttonMargin = Math.round(5 * mConfiguration.mDensity);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.setMargins(buttonMargin, 0, buttonMargin, 0);
+        Iterator<PackageTextView> nextButton = mActionList.iterator();
+        while(nextButton.hasNext()){
+            PackageTextView item = nextButton.next();
+            mButtonListItems.addView(item, params);
+        }
+    }
+
+    private void resetButtonGlow(){
+        for (int i = 0; i < mButtonListItems.getChildCount(); i++){
+            PackageTextView item = (PackageTextView) mButtonListItems.getChildAt(i);
+            item.setBackground(item.getOriginalImage());
+        }
+    }
+
+    public void setHandleRecentsUpdate(boolean handleRecentsUpdate) {
+        mHandleRecentsUpdate = handleRecentsUpdate;
+    }
+
+    public boolean isHandleRecentsUpdate() {
+        return mHandleRecentsUpdate;
+    }
+
+    private void updateStyle() {
+        mForegroundProcessText.setTextColor(Color.WHITE);
+        mBackgroundProcessText.setTextColor(Color.WHITE);
+
+        if (mConfiguration.mFlatStyle){
+            mButtonListContainer.setBackground(mContext.getResources().getDrawable(R.drawable.overlay_bg_button_flat));
+            mForegroundProcessText.setShadowLayer(0, 0, 0, Color.BLACK);
+            mBackgroundProcessText.setShadowLayer(0, 0, 0, Color.BLACK);
+            mNoRecentApps.setTextColor(Color.BLACK);
+            mNoRecentApps.setShadowLayer(0, 0, 0, Color.BLACK);
+            mFavoriteDrawableDefault[0] = BitmapUtils.colorize(mContext.getResources(), mContext.getResources().getColor(R.color.button_bg_flat_color), mContext.getResources().getDrawable(R.drawable.ic_expand_up));
+            mFavoriteDrawableDefault[1] = BitmapUtils.colorize(mContext.getResources(), mContext.getResources().getColor(R.color.button_bg_flat_color), mContext.getResources().getDrawable(R.drawable.ic_expand_down));
+            mFavoriteDrawableGlow[0] = mFavoriteDrawableDefault[0];
+            mFavoriteDrawableGlow[1] = mFavoriteDrawableDefault[1];
+        } else {
+            mButtonListContainer.setBackground(null);
+            mForegroundProcessText.setShadowLayer(5, 0, 0, Color.BLACK);
+            mBackgroundProcessText.setShadowLayer(5, 0, 0, Color.BLACK);
+            mNoRecentApps.setTextColor(Color.WHITE);
+            mNoRecentApps.setShadowLayer(5, 0, 0, Color.BLACK);
+            mFavoriteDrawableDefault[0] = BitmapUtils.shadow(mContext.getResources(), mContext.getResources().getDrawable(R.drawable.ic_expand_up));
+            mFavoriteDrawableDefault[1] = BitmapUtils.shadow(mContext.getResources(), mContext.getResources().getDrawable(R.drawable.ic_expand_down));
+            mFavoriteDrawableGlow[0] = BitmapUtils.glow(mContext.getResources(),
+                    mConfiguration.mGlowColor,
+                    mContext.getResources().getDrawable(R.drawable.ic_expand_up));
+            mFavoriteDrawableGlow[1] = BitmapUtils.glow(mContext.getResources(),
+                    mConfiguration.mGlowColor,
+                    mContext.getResources().getDrawable(R.drawable.ic_expand_down));
         }
     }
 }

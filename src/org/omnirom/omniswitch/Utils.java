@@ -18,22 +18,23 @@
 package org.omnirom.omniswitch;
 
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
-import org.omnirom.omniswitch.ui.BitmapFilter;
-
+import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
-import android.content.res.Resources;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
-import android.graphics.BlurMaskFilter;
-import android.graphics.Canvas;
-import android.graphics.Paint;
-import android.graphics.PorterDuff.Mode;
-import android.graphics.drawable.BitmapDrawable;
-import android.graphics.drawable.Drawable;
+import android.hardware.input.InputManager;
+import android.os.Handler;
+import android.os.SystemClock;
+import android.preference.PreferenceManager;
+import android.provider.Settings;
+import android.view.InputDevice;
+import android.view.KeyCharacterMap;
+import android.view.KeyEvent;
 
 public class Utils {
 
@@ -79,64 +80,39 @@ public class Utils {
         }
         return label;
     }
-    
-    public static Drawable rotate(Resources resources, Drawable image, int deg) {
-        Bitmap b = ((BitmapDrawable) image).getBitmap();
-        Bitmap bmResult = Bitmap.createBitmap(b.getWidth(), b.getHeight(),
-                Bitmap.Config.ARGB_8888);
-        Canvas tempCanvas = new Canvas(bmResult);
-        tempCanvas.rotate(deg, b.getWidth() / 2, b.getHeight() / 2);
-        tempCanvas.drawBitmap(b, 0, 0, null);
-        return new BitmapDrawable(resources, bmResult);
-    }
 
-    public static Drawable resize(Resources resources, Drawable image, int iconSize, int borderSize, float density) {
-        int size = (int) (iconSize * density + 0.5f);
-        int border = (int) (borderSize * density + 0.5f);
-
-        Bitmap b = ((BitmapDrawable) image).getBitmap();
-        int originalHeight = b.getHeight();
-        int originalWidth = b.getWidth();
-
-        int l = originalHeight > originalWidth ? originalHeight : originalWidth;
-        float factor = (float) size / (float) l;
-
-        int resizedHeight = (int) (originalHeight * factor);
-        int resizedWidth = (int) (originalWidth * factor);
-
-        // create a border around the icon
-        Bitmap bmResult = Bitmap.createBitmap(resizedHeight + border, resizedWidth + border,
-                Bitmap.Config.ARGB_8888);
-        Canvas tempCanvas = new Canvas(bmResult);
-
-        Bitmap bitmapResized = Bitmap.createScaledBitmap(b, resizedWidth,
-                resizedHeight, true);
-        tempCanvas.drawBitmap(bitmapResized, border/2, border/2, null);
-
-        return new BitmapDrawable(resources, bmResult);
-    }
-    
-    public static boolean[] buttonStringToArry(String buttonString){
+    public static Map<Integer, Boolean> buttonStringToMap(String buttonString, String defaultButtonString){
+        Map<Integer, Boolean> buttons = new LinkedHashMap<Integer, Boolean>();
         String[] splitParts = buttonString.split(",");
-        boolean[] buttons = new boolean[splitParts.length];
         for(int i = 0; i < splitParts.length; i++){
-            if (splitParts[i].equals("0")){
-                buttons[i]=false;
-            } else if (splitParts[i].equals("1")){
-                buttons[i]=true;
+            String[] buttonParts = splitParts[i].split(":");
+            Integer key = Integer.valueOf(buttonParts[0]);
+            boolean value = buttonParts[1].equals("1") ? true : false;
+            buttons.put(key, value);
+        }
+        // add any entries that are more in the default
+        String[] splitPartsDefault = defaultButtonString.split(",");
+        if (splitPartsDefault.length > splitParts.length){
+            for(int i = splitParts.length; i < splitPartsDefault.length; i++){
+                String[] buttonParts = splitPartsDefault[i].split(":");
+                Integer key = Integer.valueOf(buttonParts[0]);
+                boolean value = buttonParts[1].equals("1") ? true : false;
+                buttons.put(key, value);
             }
         }
         return buttons;
     }
-    
-    public static String buttonArrayToString(boolean[] buttons){
+
+    public static String buttonMapToString(Map<Integer, Boolean> buttons){
         String buttonString = "";
-        for(int i = 0; i < buttons.length; i++){
-            boolean value = buttons[i];
+        Iterator<Integer> nextBoolean = buttons.keySet().iterator();
+        while(nextBoolean.hasNext()){
+            Integer key = nextBoolean.next();
+            boolean value = buttons.get(key);
             if (value){
-                buttonString = buttonString + "1,";
+                buttonString = buttonString + key +":1,";
             } else {
-                buttonString = buttonString + "0,";
+                buttonString = buttonString + key + ":0,";
             }
         }
         if(buttonString.length() > 0){
@@ -144,42 +120,45 @@ public class Utils {
         }
         return buttonString;
     }
-    
-    public static Bitmap getGlow(Resources resources, String name, int color, Drawable image) {
-        Bitmap b = ((BitmapDrawable) image).getBitmap();
-        return BitmapFilter.getSingleton().getGlow(name, color, b);
+
+    public static void triggerVirtualKeypress(final Handler handler, final int keyCode) {
+        final InputManager im = InputManager.getInstance();
+        long now = SystemClock.uptimeMillis();
+
+        final KeyEvent downEvent = new KeyEvent(now, now, KeyEvent.ACTION_DOWN,
+              keyCode, 0, 0, KeyCharacterMap.VIRTUAL_KEYBOARD, 0,
+              KeyEvent.FLAG_FROM_SYSTEM | KeyEvent.FLAG_VIRTUAL_HARD_KEY, InputDevice.SOURCE_CLASS_BUTTON);
+        final KeyEvent upEvent = KeyEvent.changeAction(downEvent,
+              KeyEvent.ACTION_UP);
+
+        handler.post(new Runnable(){
+            @Override
+            public void run() {
+                im.injectInputEvent(downEvent,InputManager.INJECT_INPUT_EVENT_MODE_ASYNC);
+            }});
+
+        handler.postDelayed(new Runnable(){
+            @Override
+            public void run() {
+                im.injectInputEvent(upEvent, InputManager.INJECT_INPUT_EVENT_MODE_ASYNC);
+            }}, 20);
     }
-    
-    public static Drawable getGlowDrawable(Resources resources, String name, int color, Drawable image) {
-        return new BitmapDrawable(resources, getGlow(resources, name, color, image));
-    }
-    
-    public static Drawable colorize(Resources resources, int color, Drawable image) {
-        Bitmap b = ((BitmapDrawable) image).getBitmap();
-        BitmapDrawable b1 = new BitmapDrawable(resources, b);
-        // remove any alpha
-        color = color &~ 0xff000000;
-        color = color | 0xff000000;
-        b1.setColorFilter(color, Mode.SRC_ATOP);
-        return b1;
+
+    public static void removeFromFavorites(Context context, String item, List<String> favoriteList) {
+        if (favoriteList.contains(item)){
+            SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+            favoriteList.remove(item);
+            prefs.edit().putString(SettingsActivity.PREF_FAVORITE_APPS,
+                    Utils.flattenFavorites(favoriteList)).commit();
+        }
     }
 
-    public static Drawable shadow(Resources resources, Drawable image) {
-        Bitmap b = ((BitmapDrawable) image).getBitmap();
-
-        BlurMaskFilter blurFilter = new BlurMaskFilter(5, BlurMaskFilter.Blur.OUTER);
-        Paint shadowPaint = new Paint();
-        shadowPaint.setMaskFilter(blurFilter);
-
-        int[] offsetXY = new int[2];
-        Bitmap b2 = b.extractAlpha(shadowPaint, offsetXY);
-
-        Bitmap bmResult = Bitmap.createBitmap(b.getWidth(), b.getHeight(), Bitmap.Config.ARGB_8888);
-
-        Canvas c = new Canvas(bmResult);
-        c.drawBitmap(b2, 0, 0, null);
-        c.drawBitmap(b, -offsetXY[0], -offsetXY[1], null);
-
-        return new BitmapDrawable(resources, bmResult);
+    public static void addToFavorites(Context context, String item, List<String> favoriteList) {
+        if (!favoriteList.contains(item)){
+            SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+            favoriteList.add(item);
+            prefs.edit().putString(SettingsActivity.PREF_FAVORITE_APPS,
+                    Utils.flattenFavorites(favoriteList)).commit();
+        }
     }
 }

@@ -17,8 +17,11 @@
  */
 package org.omnirom.omniswitch;
 
-import org.omnirom.omniswitch.ui.SwitchGestureView;
+import org.omnirom.omniswitch.ui.BitmapCache;
+import org.omnirom.omniswitch.ui.IconPackHelper;
 
+import android.app.Notification;
+import android.app.NotificationManager;
 import android.app.Service;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -27,19 +30,22 @@ import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.os.IBinder;
+import android.os.UserHandle;
 import android.preference.PreferenceManager;
 import android.util.Log;
 
 public class SwitchService extends Service {
     private final static String TAG = "SwitchService";
-    private static boolean DEBUG = true;
+    private static boolean DEBUG = false;
 
-    private SwitchGestureView mGesturePanel;
+    private static final int START_SERVICE_ERROR_ID = 0;
+
     private RecentsReceiver mReceiver;
     private SwitchManager mManager;
     private SharedPreferences mPrefs;
     private SharedPreferences.OnSharedPreferenceChangeListener mPrefsListener;
     private SwitchConfiguration mConfiguration;
+    private int mUserId = -1;
 
     private static boolean mIsRunning;
 
@@ -50,24 +56,28 @@ public class SwitchService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
+        mConfiguration = SwitchConfiguration.getInstance(this);
 
-        mGesturePanel = new SwitchGestureView(this);
-        Log.d(TAG, "started SwitchService");
+        if(mConfiguration.mRestrictedMode){
+            createErrorNotification();
+        }
+        mUserId = UserHandle.myUserId();
+        Log.d(TAG, "started SwitchService " + mUserId);
 
         mManager = new SwitchManager(this);
-        mConfiguration = SwitchConfiguration.getInstance(this);
 
         mReceiver = new RecentsReceiver();
         IntentFilter filter = new IntentFilter();
         filter.addAction(RecentsReceiver.ACTION_SHOW_OVERLAY);
-        filter.addAction(RecentsReceiver.ACTION_SHOW_OVERLAY2);
         filter.addAction(RecentsReceiver.ACTION_HIDE_OVERLAY);
-        filter.addAction(RecentsReceiver.ACTION_OVERLAY_SHOWN);
-        filter.addAction(RecentsReceiver.ACTION_OVERLAY_HIDDEN);
         filter.addAction(RecentsReceiver.ACTION_HANDLE_HIDE);
         filter.addAction(RecentsReceiver.ACTION_HANDLE_SHOW);
+        filter.addAction(RecentsReceiver.ACTION_TOGGLE_OVERLAY);
+        filter.addAction(Intent.ACTION_USER_SWITCHED);
+        filter.addAction(Intent.ACTION_SHUTDOWN);
 
         registerReceiver(mReceiver, filter);
+        PackageManager.getInstance(this).updatePackageList(false, null);
 
         mPrefs = PreferenceManager.getDefaultSharedPreferences(this);
         updatePrefs(mPrefs, null);
@@ -87,20 +97,15 @@ public class SwitchService extends Service {
     @Override
     public void onDestroy() {
         super.onDestroy();
-        Log.d(TAG, "stopped SwitchService");
-
-        mGesturePanel.hide();
-        mGesturePanel = null;
+        Log.d(TAG, "stopped SwitchService " + mUserId);
 
         unregisterReceiver(mReceiver);
         mManager.killManager();
         mPrefs.unregisterOnSharedPreferenceChangeListener(mPrefsListener);
+        mManager.shutdownService();
 
         mIsRunning = false;
-
-        Intent finishActivity = new Intent(MainActivity.ActivityReceiver.ACTION_FINISH);
-        sendBroadcast(finishActivity);
-
+        BitmapCache.getInstance(this).clear();
     }
 
     @Override
@@ -116,12 +121,18 @@ public class SwitchService extends Service {
 
     public class RecentsReceiver extends BroadcastReceiver {
         public static final String ACTION_SHOW_OVERLAY = "org.omnirom.omniswitch.ACTION_SHOW_OVERLAY";
-        public static final String ACTION_SHOW_OVERLAY2 = "org.omnirom.omniswitch.ACTION_SHOW_OVERLAY2";
         public static final String ACTION_HIDE_OVERLAY = "org.omnirom.omniswitch.ACTION_HIDE_OVERLAY";
-        public static final String ACTION_OVERLAY_SHOWN = "org.omnirom.omniswitch.ACTION_OVERLAY_SHOWN";
-        public static final String ACTION_OVERLAY_HIDDEN = "org.omnirom.omniswitch.ACTION_OVERLAY_HIDDEN";
         public static final String ACTION_HANDLE_HIDE = "org.omnirom.omniswitch.ACTION_HANDLE_HIDE";
         public static final String ACTION_HANDLE_SHOW = "org.omnirom.omniswitch.ACTION_HANDLE_SHOW";
+        public static final String ACTION_TOGGLE_OVERLAY = "org.omnirom.omniswitch.ACTION_TOGGLE_OVERLAY";
+
+        private void show(Context context) {
+            mManager.show();
+        }
+
+        private void hide() {
+            mManager.hide();
+        }
 
         @Override
         public void onReceive(final Context context, Intent intent) {
@@ -131,55 +142,66 @@ public class SwitchService extends Service {
             }
             if (ACTION_SHOW_OVERLAY.equals(action)) {
                 if (!mManager.isShowing()) {
-                    Intent mainActivity = new Intent(context,
-                            MainActivity.class);
-                    mainActivity.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK
-                            | Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS);
-
-                    startActivity(mainActivity);
-                }
-            } else if (ACTION_SHOW_OVERLAY2.equals(action)) {
-                if (!mManager.isShowing()) {
-                    mManager.show();
+                    if (DEBUG){
+                        Log.d(TAG, "ACTION_SHOW_OVERLAY " + System.currentTimeMillis());
+                    }
+                    show(context);
                 }
             } else if (ACTION_HIDE_OVERLAY.equals(action)) {
                 if (mManager.isShowing()) {
-                    Intent finishActivity = new Intent(
-                            MainActivity.ActivityReceiver.ACTION_FINISH);
-                    sendBroadcast(finishActivity);
-                    mManager.hide();
+                    hide();
                 }
-            } else if (ACTION_OVERLAY_SHOWN.equals(action)){
-                mGesturePanel.overlayShown();
-            } else if (ACTION_OVERLAY_HIDDEN.equals(action)){
-                mGesturePanel.overlayHidden();
             } else if (ACTION_HANDLE_SHOW.equals(action)){
                 if (mConfiguration.mDragHandleShow){
-                    mGesturePanel.show();
+                    mManager.getSwitchGestureView().show();
                 }
             } else if (ACTION_HANDLE_HIDE.equals(action)){
-                mGesturePanel.hide();
+                mManager.getSwitchGestureView().hide();
+            } else if (ACTION_TOGGLE_OVERLAY.equals(action)) {
+                if (mManager.isShowing()) {
+                    hide();
+                } else {
+                    show(context);
+                }
+            } else if (Intent.ACTION_USER_SWITCHED.equals(action)) {
+                int userId = intent.getIntExtra(Intent.EXTRA_USER_HANDLE, -1);
+                Log.d(TAG, "user switch " + mUserId + "->" + userId);
+                if (userId != mUserId){
+                    mManager.getSwitchGestureView().hide();
+                } else {
+                    if (mConfiguration.mDragHandleShow){
+                        mManager.getSwitchGestureView().show();
+                    }
+                }
+            } else if (Intent.ACTION_SHUTDOWN.equals(action)) {
+                Log.d(TAG, "ACTION_SHUTDOWN");
+                mManager.shutdownService();
             }
         }
     }
 
     public void updatePrefs(SharedPreferences prefs, String key) {
         // MUST be before the rest
+        IconPackHelper.getInstance(this).updatePrefs(prefs, key);
         mConfiguration.updatePrefs(prefs, key);
         mManager.updatePrefs(prefs, key);
-        mGesturePanel.updatePrefs(prefs, key);
     }
     
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
-        // recalc drag handle location
-        if (mIsRunning && mGesturePanel.isShowing()){
-            mGesturePanel.updateLayout();
-        }
-        // recalc overlay location
-        if (mIsRunning && mManager.isShowing()) {
+        if (mIsRunning) {
             mManager.updateLayout();
         }
+    }
+
+    private void createErrorNotification() {
+        final NotificationManager notificationManager = (NotificationManager)getSystemService(NOTIFICATION_SERVICE);
+        final Notification notifyDetails = new Notification.Builder(this)
+                .setContentTitle("OmniSwitch restricted mode")
+                .setContentText("Failed to gain system permissions")
+                .setSmallIcon(android.R.drawable.ic_dialog_alert)
+                .build();
+        notificationManager.notify(START_SERVICE_ERROR_ID, notifyDetails);
     }
 }

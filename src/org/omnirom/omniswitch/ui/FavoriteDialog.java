@@ -17,33 +17,23 @@
  */
 package org.omnirom.omniswitch.ui;
 
-import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 
+import org.omnirom.omniswitch.PackageManager;
+import org.omnirom.omniswitch.PackageManager.PackageItem;
 import org.omnirom.omniswitch.R;
 import org.omnirom.omniswitch.SettingsActivity;
-import org.omnirom.omniswitch.Utils;
 import org.omnirom.omniswitch.dslv.DragSortController;
 import org.omnirom.omniswitch.dslv.DragSortListView;
 
 import android.app.AlertDialog;
-import android.content.ComponentName;
 import android.content.Context;
 import android.content.DialogInterface;
-import android.content.Intent;
-import android.content.pm.ActivityInfo;
-import android.content.pm.ApplicationInfo;
-import android.content.pm.PackageManager;
-import android.content.pm.PackageManager.NameNotFoundException;
-import android.content.pm.ResolveInfo;
 import android.graphics.Point;
-import android.graphics.drawable.Drawable;
 import android.os.Bundle;
-import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
@@ -60,11 +50,7 @@ import android.widget.TextView;
 
 public class FavoriteDialog extends AlertDialog implements
         DialogInterface.OnClickListener, DialogInterface.OnDismissListener {
-    private static final String TAG = "FavoriteDialog";
-
     private LayoutInflater mInflater;
-    private List<Drawable> mFavoriteIcons;
-    private List<String> mFavoriteNames;
     private List<String> mFavoriteList;
     private SettingsActivity mContext;
     private FavoriteListAdapter mFavoriteAdapter;
@@ -87,12 +73,15 @@ public class FavoriteDialog extends AlertDialog implements
             View rowView = null;
             rowView = mInflater.inflate(R.layout.favorite_app_item, parent,
                     false);
+            String intent = mFavoriteList.get(position);
+            PackageManager.PackageItem packageItem = PackageManager.getInstance(mContext).getPackageItem(intent);
+
             final TextView item = (TextView) rowView
                     .findViewById(R.id.app_item);
-            item.setText(mFavoriteNames.get(position));
+            item.setText(packageItem.getTitle());
             final ImageView image = (ImageView) rowView
                     .findViewById(R.id.app_icon);
-            image.setImageDrawable(mFavoriteIcons.get(position));
+            image.setImageDrawable(BitmapCache.getInstance(mContext).getPackageIcon(mContext.getResources(), packageItem));
             return rowView;
         }
     }
@@ -168,7 +157,6 @@ public class FavoriteDialog extends AlertDialog implements
                     public void drop(int from, int to) {
                         String intent = mFavoriteList.remove(from);
                         mFavoriteList.add(to, intent);
-                        updateFavorites(mFavoriteList);
                         mFavoriteAdapter.notifyDataSetChanged();
                     }
                 });
@@ -177,7 +165,6 @@ public class FavoriteDialog extends AlertDialog implements
                     @Override
                     public void remove(int which) {
                         mFavoriteList.remove(which);
-                        updateFavorites(mFavoriteList);
                         mFavoriteAdapter.notifyDataSetChanged();
                     }
                 });
@@ -188,7 +175,6 @@ public class FavoriteDialog extends AlertDialog implements
             }
         });
         mFavoriteConfigList.setItemsCanFocus(false);
-        updateFavorites(mFavoriteList);
     }
 
     @Override
@@ -238,36 +224,9 @@ public class FavoriteDialog extends AlertDialog implements
         mAddFavoriteDialog.show();
     }
 
-    private void updateFavorites(List<String> favoriteList) {
-        final PackageManager pm = mContext.getPackageManager();
-        mFavoriteIcons = new ArrayList<Drawable>();
-        mFavoriteNames = new ArrayList<String>();
-        Iterator<String> nextFavorite = favoriteList.iterator();
-        while (nextFavorite.hasNext()) {
-            String favorite = nextFavorite.next();
-            Intent intent = null;
-            try {
-                intent = Intent.parseUri(favorite, 0);
-                mFavoriteIcons.add(pm.getActivityIcon(intent));
-            } catch (NameNotFoundException e) {
-                Log.e(TAG, "NameNotFoundException: [" + favorite + "]");
-                continue;
-            } catch (URISyntaxException e) {
-                Log.e(TAG, "URISyntaxException: [" + favorite + "]");
-                continue;
-            }
-            String label = Utils.getActivityLabel(pm, intent);
-            if (label == null) {
-                label = favorite;
-            }
-            mFavoriteNames.add(label);
-        }
-    }
-
     public void applyChanges(List<String> favoriteList) {
         mFavoriteList.clear();
         mFavoriteList.addAll(favoriteList);
-        updateFavorites(mFavoriteList);
         mFavoriteAdapter.notifyDataSetChanged();
     }
 
@@ -276,69 +235,14 @@ public class FavoriteDialog extends AlertDialog implements
 
         private PackageAdapter mPackageAdapter;
         private List<String> mChangedFavoriteList;
-        private List<PackageItem> mInstalledPackages;
         private ListView mListView;
-
-        private class PackageItem implements Comparable<PackageItem> {
-            CharSequence title;
-            String packageName;
-            Drawable icon;
-            String intent;
-
-            @Override
-            public int compareTo(PackageItem another) {
-                int result = title.toString().compareToIgnoreCase(
-                        another.title.toString());
-                return result != 0 ? result : packageName
-                        .compareTo(another.packageName);
-            }
-        }
-        
-        private Drawable getDefaultActivityIcon() {
-            return mContext.getResources().getDrawable(R.drawable.ic_default);
-        }
+        private List<PackageItem> mInstalledPackages;
 
         private class PackageAdapter extends BaseAdapter {
 
             private void reloadList() {
-                final PackageManager pm = mContext.getPackageManager();
-
-                mInstalledPackages.clear();
-
-                final Intent mainIntent = new Intent(Intent.ACTION_MAIN, null);
-                mainIntent.addCategory(Intent.CATEGORY_LAUNCHER);
-                List<ResolveInfo> installedAppsInfo = pm.queryIntentActivities(
-                        mainIntent, 0);
-
-                for (ResolveInfo info : installedAppsInfo) {
-                    ApplicationInfo appInfo = info.activityInfo.applicationInfo;
-
-                    final PackageItem item = new PackageItem();
-                    item.packageName = appInfo.packageName;
-
-                    ActivityInfo activity = info.activityInfo;
-                    ComponentName name = new ComponentName(
-                            activity.applicationInfo.packageName, activity.name);
-                    Intent intent = new Intent(Intent.ACTION_MAIN);
-                    intent.addCategory(Intent.CATEGORY_LAUNCHER);
-                    intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK
-                            | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
-                    intent.setComponent(name);
-                    item.intent = intent.toUri(0);
-                    try {
-                        item.icon = pm.getActivityIcon(intent);
-                    } catch (NameNotFoundException e) {
-                        continue;
-                    }
-                    item.title = Utils.getActivityLabel(pm, intent);
-                    if (item.title == null) {
-                        item.title = appInfo.loadLabel(pm);
-                    }
-                    if (item.icon == null) {
-                        item.icon = getDefaultActivityIcon();
-                    }
-                    mInstalledPackages.add(item);
-                }
+                mInstalledPackages = new LinkedList<PackageItem>();
+                mInstalledPackages.addAll(PackageManager.getInstance(mContext).getPackageList());
                 Collections.sort(mInstalledPackages);
             }
 
@@ -359,7 +263,7 @@ public class FavoriteDialog extends AlertDialog implements
             @Override
             public long getItemId(int position) {
                 // intent is guaranteed to be unique in mInstalledPackages
-                return mInstalledPackages.get(position).intent.hashCode();
+                return mInstalledPackages.get(position).getIntent().hashCode();
             }
 
             @Override
@@ -381,12 +285,11 @@ public class FavoriteDialog extends AlertDialog implements
                             .findViewById(R.id.app_icon);
                 }
                 PackageItem applicationInfo = getItem(position);
-                holder.item.setText(applicationInfo.title);
-                holder.image.setImageDrawable(applicationInfo.icon);
+                holder.item.setText(applicationInfo.getTitle());
+                holder.image.setImageDrawable(BitmapCache.getInstance(mContext).getPackageIcon(mContext.getResources(), applicationInfo));
                 holder.check.setChecked(mChangedFavoriteList
-                        .contains(applicationInfo.intent));
+                        .contains(applicationInfo.getIntent()));
 
-                Log.d(TAG, "add " + applicationInfo.title);
                 return convertView;
             }
         }
@@ -429,7 +332,6 @@ public class FavoriteDialog extends AlertDialog implements
             mChangedFavoriteList.addAll(mFavoriteList);
 
             mListView = (ListView) view.findViewById(R.id.installed_apps);
-            mInstalledPackages = new LinkedList<PackageItem>();
             mPackageAdapter = new PackageAdapter();
             mListView.setAdapter(mPackageAdapter);
             mListView.setOnItemClickListener(new OnItemClickListener() {
@@ -441,11 +343,11 @@ public class FavoriteDialog extends AlertDialog implements
                     ViewHolder viewHolder = (ViewHolder) view.getTag();
                     viewHolder.check.setChecked(!viewHolder.check.isChecked());
                     if (viewHolder.check.isChecked()) {
-                        if (!mChangedFavoriteList.contains(info.intent)) {
-                            mChangedFavoriteList.add(info.intent);
+                        if (!mChangedFavoriteList.contains(info.getIntent())) {
+                            mChangedFavoriteList.add(info.getIntent());
                         }
                     } else {
-                        mChangedFavoriteList.remove(info.intent);
+                        mChangedFavoriteList.remove(info.getIntent());
                     }
                 }
             });

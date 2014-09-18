@@ -20,11 +20,17 @@ package org.omnirom.omniswitch;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.net.Uri;
 
 public class PackageReceiver extends BroadcastReceiver {
 
     @Override
     public void onReceive(final Context context, Intent intent) {
-        SettingsActivity.removeUninstalledFavorites(context);
+        if (SwitchService.isRunning()){
+            boolean removed = intent.getAction().equals("android.intent.action.PACKAGE_REMOVED");
+            Uri uri = intent.getData();
+            String pkg = uri != null ? uri.getSchemeSpecificPart() : null;
+            PackageManager.getInstance(context).updatePackageList(removed, pkg);
+        }
     }
 }

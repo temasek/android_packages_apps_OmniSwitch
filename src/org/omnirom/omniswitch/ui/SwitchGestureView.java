@@ -339,7 +339,7 @@ public class SwitchGestureView implements OnShowcaseEventListener {
             }
         });
         mView.addView(mDragButton, getDragHandleLayoutParamsSmall());
-        updateButton();
+        updateButton(false);
     }
 
     private int getGravity() {
@@ -405,10 +405,14 @@ public class SwitchGestureView implements OnShowcaseEventListener {
         return lp;
     }
 
-    private void updateButton() {
+    private void updateButton(boolean reload) {
         if(mConfiguration.mAutoHide){
             updateDragHandleImage(false);
         } else {
+            if (reload) {
+                // to catch location/rotation changes
+                updateDragHandleImage(false);
+            }
             updateDragHandleImage(true);
             mHidden = false;
         }
@@ -441,7 +445,7 @@ public class SwitchGestureView implements OnShowcaseEventListener {
         if(DEBUG){
             Log.d(TAG, "updatePrefs");
         }
-        updateButton();
+        updateButton(true);
 
         mSpeedSwitcher = prefs.getBoolean(SettingsActivity.PREF_SPEED_SWITCHER, false);
         String favoriteListString = prefs.getString(SettingsActivity.PREF_FAVORITE_APPS, "");

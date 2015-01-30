@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Copyright (C) 2013 The OmniROM Project
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 2 of the License, or
+  (at your option) any later version.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+-->
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="app_name">OmniSwitch</string>
+    <string name="status_bar_recent_remove_item_title">Pare</string>
+    <string name="package_inspect_item_title">Informação do app</string>
+    <string name="recents_settings_title">OmniSwitch</string>
+    <string name="start_on_boot_title">Comece na inicialização</string>
+    <string name="start_on_boot_summary">Comece e habilitar a inicialização do dispositivo</string>
+    <string name="opacity_title">opacidade</string>
+    <string name="opacity_summary">Background opacidade de vista de sobreposição</string>
+    <string name="animate_title">Animar</string>
+    <string name="animate_title_summary">Animar show e hide de vista de sobreposição</string>
+    <string name="adjust_handle_title">Posição e tamanho</string>
+    <string name="sc_drag_handle_title">Alça de arrastar</string>
+    <string name="sc_drag_handle_body">\ nSwipe horizontalmente para abrir \ n botão \ nPressione ou fora para fechar \ n \ Nlong prima para abrir switcher rápido</string>
+    <string name="sc_favorite_title">Aplicativos favoritos</string>
+    <string name="sc_favorite_body">\nAbrir aplicativos favoritos ver.</string>
+    <string name="icon_size_normal">Normal</string>
+    <string name="icon_size_small">Pequeno</string>
+    <string name="icon_size_large">Grande</string>
+    <string name="icon_size_title">Tamanho do ícone</string>
+    <string name="ok">OK</string>
+    <string name="cancel">Cancelar</string>
+    <string name="drag_handle_color_title">Cor</string>
+    <string name="drag_handle_color_dialog_title">Cor</string>
+    <string name="service_background_processes"><xliff:g id="memory">%1$s</xliff:g> livre</string>
+    <string name="service_foreground_processes"><xliff:g id="memory">%1$s</xliff:g> usado</string>
+    <string name="show_rambar_title">Mostrar o uso de memória</string>
+    <string name="show_rambar_summary">Quantidade de exibição de memória livre e utilizada</string>
+    <string name="show_app_labels">Mostrar nome do app</string>
+    <string name="show_app_labels_summary">O nome do aplicativo será exibido com o ícone</string>
+    <string name="category_overlay_title">Overlay</string>
+    <string name="category_drag_handle_title">Alça de arrastar</string>
+    <string name="category_favorite_title">Favoritos</string>
+    <string name="favorite_apps_config_title">Gerir favoritos</string>
+    <string name="favorite_apps_config_summary">Definir aplicativos mostrados na tela Favoritos</string>
+    <string name="favorite_apps_add_dialog_title">Adicionar aplicativos</string>
+    <string name="favorite_add">Adicionar\u2026</string>
+    <string name="location_left" translatable="false">&lt;&lt;</string>
+    <string name="location_right" translatable="false">&gt;&gt;</string>
+    <string name="reset">Default</string>
+    <string name="toogle_last_app_help">Alternar para o último app</string>
+    <string name="kill_all_apps_help">Mate todos os aplicativos</string>
+    <string name="kill_other_apps_help">Matar outros aplicativos</string>
+    <string name="settings_help">Definições</string>
+    <string name="home_help">Home</string>
+    <string name="toogle_last_app">Alternar para o último app</string>
+    <string name="kill_all_apps">Mate todos</string>
+    <string name="kill_other_apps">Matar outro</string>
+    <string name="settings">Definições</string>
+    <string name="home">Home</string>
+    <string name="buttons_title">Botões</string>
+    <string name="buttons_summary">Configurar botões de ação, tendo em vista sobreposição</string>
+    <string name="auto_hide_handle">Esconder automático</string>
+    <string name="auto_hide_handle_summary">Dois deslize para mostrar a vista de sobreposição</string>
+    <string name="no_recent_apps_title">Nenhum aplicativo recentes</string>
+    <string name="drag_handle_opacity_title">opacidade</string>
+    <string name="drag_handle_enable_title">Ativar</string>
+    <string name="drag_handle_enable_summary">Desative apenas se você usar outro método de ativação</string>
+    <string name="allapps_help">Gaveta app</string>
+    <string name="allapps">Gaveta app</string>
+    <string name="dim_behind_title">Dim background</string>
+    <string name="dim_behind_summary">Aplicar opacidade a tela completa</string>
+    <string name="gravity_title">Gravidade horizontal</string>
+    <string name="gravity_center">Centro</string>
+    <string name="gravity_drag">Lado alça de arrastar</string>
+    <string name="dialog_pick_iconpack_title">Escolher pacote de ícone</string>
+    <string name="default_iconpack_title">Ìcones padrão</string>
+    <string name="icon_packs_title">Pacotes de ícone</string>
+    <string name="no_iconpacks_summary">Não há pacotes de ícone instalado</string>
+    <string name="icon_pack_title">Pacote de ícone</string>
+    <string name="icon_pack_summary">Use pacote de ícone para ícones de aplicativos</string>
+    <string name="category_speed_switcher_title">Switcher Rápida</string>
+    <string name="speed_switcher_enable_summary">Longa tragada imprensa lidar para ativar</string>
+    <string name="speed_switcher_enable_title">Ativar</string>
+    <string name="back">Voltar</string>
+    <string name="back_help">Voltar</string>
+    <string name="kill_current">Matar atual</string>
+    <string name="kill_current_help">Matar app atual</string>
+    <string name="speed_switch_color_summary">Aplicativos -recent azuis. Verde - favoritos. Vermelho - ações</string>
+    <string name="speed_switch_color">Cores nível de fundo</string>
+    <string name="speed_switch_limit_summary">Área limite para mudanças de nível</string>
+    <string name="speed_switch_limit">Área de mudança de nível</string>
+    <string name="speed_switch_button_title">Botões</string>
+    <string name="speed_switch_button_summary">Configurar botões de ação, tendo em vista switcher rápido</string>
+    <string name="speed_switch_items_summary">Número máximo de itens de nível</string>
+    <string name="speed_switch_item">Limite de itens Nível</string>
+    <string name="sc_quick_switcher_title">switcher Rápida</string>
+    <string name="sc_quick_switcher_body">\nMoving cima e para baixo para mudar de nível.\n\nMoving esquerda e direita para alternar entre os itens de nível.</string>
+    <string name="sc_quick_switcher_empty_body">\Nno aplicativos recentes ou favoritos.\n\nMoving cima e para baixo para alternar entre os níveis.\n\nMoving esquerda e direita para alternar entre os itens de nível.</string>
+    <string name="immersive_mode">Modo Immersive</string>
+    <string name="immersive_mode_help">Alternar modo envolvente</string>
+</resources>

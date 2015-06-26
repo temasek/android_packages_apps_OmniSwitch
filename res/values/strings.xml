@@ -18,6 +18,7 @@
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
 
 	<string name="app_name">OmniSwitch</string>
+	<string name="status_bar_recent_float_item_title">Float mode</string>
 	<string name="package_stop_task_title">Stop</string>
 	<string name="package_inspect_item_title">App info</string>
 	<string name="recents_settings_title">OmniSwitch</string>

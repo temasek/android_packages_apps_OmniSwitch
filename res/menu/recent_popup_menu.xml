@@ -17,6 +17,9 @@
 -->
 <menu xmlns:android="http://schemas.android.com/apk/res/android" >
     <item
+        android:id="@+id/recent_float_item"
+        android:title="@string/status_bar_recent_float_item_title" />
+    <item
         android:id="@+id/package_stop_task"
         android:title="@string/package_stop_task_title"/>
     <item

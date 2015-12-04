@@ -170,9 +170,7 @@ public class SwitchManager {
             hide(true);
         }
 
-        Intent intent = ad.getIntent();
-        boolean floating = (intent.getFlags() & Intent.FLAG_FLOATING_WINDOW) == Intent.FLAG_FLOATING_WINDOW;
-        if (ad.getTaskId() >= 0 && !floating) {
+        if (ad.getTaskId() >= 0) {
             // This is an active task; it should just go to the foreground.
             if (customAnim) {
                 final ActivityOptions opts = ActivityOptions.makeCustomAnimation(mContext,
@@ -183,14 +181,10 @@ public class SwitchManager {
                 am.moveTaskToFront(ad.getTaskId(), ActivityManager.MOVE_TASK_NO_USER_ACTION);
             }
         } else {
-            if (!floating) {
-                intent.addFlags(Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY
-                       | Intent.FLAG_ACTIVITY_TASK_ON_HOME
-                       | Intent.FLAG_ACTIVITY_NEW_TASK);
-            } else {
-                intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK
-                       | Intent.FLAG_FLOATING_WINDOW);
-            }
+            Intent intent = ad.getIntent();
+            intent.addFlags(Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY
+                    | Intent.FLAG_ACTIVITY_TASK_ON_HOME
+                    | Intent.FLAG_ACTIVITY_NEW_TASK);
             if (DEBUG)
                 Log.v(TAG, "Starting activity " + intent);
             try {
@@ -199,27 +193,6 @@ public class SwitchManager {
                 Log.e(TAG, "Recents does not have the permission to launch "
                         + intent, e);
             }
-        }
-    }
-
-    public void floatingTask(TaskDescription ad) {
-        if (ad.isKilled()) {
-            return;
-        }
-
-        hide(true);
-
-        Intent intent = ad.getIntent();
-        intent.setFlags(Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY
-                    | Intent.FLAG_ACTIVITY_NEW_TASK
-                    | Intent.FLAG_FLOATING_WINDOW);
-        if (DEBUG)
-                Log.v(TAG, "Starting activity " + intent);
-        try {
-             mContext.startActivity(intent);
-        } catch (SecurityException e) {
-             Log.e(TAG, "Recents does not have the permission to launch "
-                     + intent, e);
         }
     }
 
@@ -360,18 +333,14 @@ public class SwitchManager {
         TaskDescription ad = mActiveTasks.get(1);
         switchTask(ad, close, true);
     }
-    
-    public void startIntentFromtString(String intent, boolean close, boolean float_window) {
+
+    public void startIntentFromtString(String intent, boolean close) {
         if(close){
             hide(true);
         }
 
         try {
             Intent intentapp = Intent.parseUri(intent, 0);
-            if(float_window) {
-                intentapp.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK
-                                | Intent.FLAG_FLOATING_WINDOW);
-            }
             mContext.startActivity(intentapp);
         } catch (URISyntaxException e) {
             Log.e(TAG, "URISyntaxException: [" + intent + "]");

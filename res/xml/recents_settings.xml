@@ -25,8 +25,7 @@
 
 	<CheckBoxPreference
 		android:key="start_on_boot"
-		android:title="@string/start_on_boot_title"
-		android:defaultValue="true" />
+		android:summary="@string/start_on_boot_summary" />
 
 	<PreferenceCategory
 		android:key="category_overlay"

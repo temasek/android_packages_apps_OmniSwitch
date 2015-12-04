@@ -239,7 +239,7 @@ public class SwitchGestureView {
                             if (mLevel == 0 ){
                                 mRecentsManager.switchTask(mCurrentItemEnv[1].getTask(), false, false);
                             } else if (mLevel == 1){
-                                mRecentsManager.startIntentFromtString(mCurrentItemEnv[1].getIntent(), false, false);
+                                mRecentsManager.startIntentFromtString(mCurrentItemEnv[1].getIntent(), false);
                             } else if (mLevel == -1){
                                 mCurrentItemEnv[1].runAction();
                             }

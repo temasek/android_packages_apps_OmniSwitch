@@ -834,9 +834,7 @@ public abstract class AbstractSwitchLayout implements ISwitchLayout {
                 .setEnabled(Utils.isLockToAppEnabled(mContext));
         popup.setOnMenuItemClickListener(new PopupMenu.OnMenuItemClickListener() {
             public boolean onMenuItemClick(MenuItem item) {
-                if (item.getItemId() == R.id.recent_float_item) {
-                    mRecentsManager.floatingTask(ad);
-                }else if (item.getItemId() == R.id.package_stop_task) {
+                if (item.getItemId() == R.id.package_stop_task) {
                     mRecentsManager.killTask(ad);
                 } else if (item.getItemId() == R.id.package_inspect_item) {
                     mRecentsManager.startApplicationDetailsActivity(ad
@@ -908,8 +906,6 @@ public abstract class AbstractSwitchLayout implements ISwitchLayout {
                 } else if (item.getItemId() == R.id.package_remove_favorite) {
                     Utils.removeFromFavorites(mContext,
                             packageItem.getIntent(), mFavoriteList);
-                } else if (item.getItemId() == R.id.recent_float_item) {
-                    mRecentsManager.startIntentFromtString(packageItem.getIntent(), true, true);
                 } else {
                     return false;
                 }
@@ -1287,3 +1283,4 @@ public abstract class AbstractSwitchLayout implements ISwitchLayout {
                 .getVisibility() == View.GONE) ? View.VISIBLE : View.GONE);
     }
 }
+

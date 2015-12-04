@@ -324,3 +324,4 @@ public class SwitchConfiguration {
         return mOverlayIconSizePx + 2 * mOverlayIconBorderPx;
     }
 }
+

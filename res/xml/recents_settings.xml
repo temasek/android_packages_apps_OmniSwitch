@@ -23,10 +23,6 @@
 		android:key="enable"
 		android:title="@string/enable_title" />
 
-	<CheckBoxPreference
-		android:key="start_on_boot"
-		android:summary="@string/start_on_boot_summary" />
-
 	<PreferenceCategory
 		android:key="category_overlay"
 		android:title="@string/category_overlay_title" >
@@ -140,12 +136,8 @@
 		<Preference
 			android:dependency="drag_handle_enable"
 			android:key="adjust_handle"
-			android:title="@string/adjust_handle_title" />
-
-		<org.omnirom.omniswitch.ui.DragHandleColorPreference
-			android:dependency="drag_handle_enable"
-			android:key="drag_handle_color_new"
-			android:title="@string/drag_handle_color_title" />
+			android:title="@string/adjust_handle_title_new"
+			android:summary="@string/adjust_handle_summary"/>
 
 		<CheckBoxPreference
 			android:defaultValue="false"

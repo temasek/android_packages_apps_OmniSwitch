@@ -93,7 +93,7 @@
   <string name="kill_current_help">Termina app corrente</string>
   <string name="speed_switch_color_summary">Blu - applicazioni recenti. Verde - preferiti. Rosso - azioni</string>
   <string name="speed_switch_color">Livello dei collori di sfondo</string>
-  <string name="speed_switch_limit_summary">Limita zona per le variazioni di livello</string>
+  <string name="speed_switch_limit_summary">Limita la zona per le variazioni di livello</string>
   <string name="speed_switch_limit">Zona di cambio livello</string>
   <string name="speed_switch_button_title">Pulsanti</string>
   <string name="speed_switch_button_summary">Configurare i pulsanti di azione da mostrare sull\'interruttore rapido</string>
@@ -126,7 +126,7 @@
   <string name="one_day">1 giorno</string>
   <string name="two_days">2 giorni</string>
   <string name="one_week">1 settimana</string>
-  <string name="app_filter_time_title">attivo dal</string>
+  <string name="app_filter_time_title">Attivo da</string>
   <string name="close_help">Chiudi overlay</string>
   <string name="close">Chiudi</string>
   <string name="thumb_size_title">Dimensioni delle miniature</string>
